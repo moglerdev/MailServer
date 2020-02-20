@@ -3,7 +3,7 @@ MailServer programmed in C-Sharp
 
 ## To-Do
 - SMTP-Service ([RFC 5321](https://tools.ietf.org/html/rfc5321))
-  - Resceive
+  - Receiver
   - Response
   - Authentication
 - IMAP-Service ([RFC 3501](https://tools.ietf.org/html/rfc3501#section-7.2.1))
