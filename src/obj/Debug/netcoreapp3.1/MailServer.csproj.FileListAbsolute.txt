@@ -1,0 +1,9 @@
+C:\Users\mogler\source\repos\MailServer\mailserver\src\bin\Debug\netcoreapp3.1\RevDeBug.setup
+C:\Users\mogler\source\repos\MailServer\mailserver\src\bin\Debug\netcoreapp3.1\MailServer.exe
+C:\Users\mogler\source\repos\MailServer\mailserver\src\obj\Debug\netcoreapp3.1\MailServer.csprojAssemblyReference.cache
+C:\Users\mogler\source\repos\MailServer\mailserver\src\obj\Debug\netcoreapp3.1\MailServer.AssemblyInfoInputs.cache
+C:\Users\mogler\source\repos\MailServer\mailserver\src\obj\Debug\netcoreapp3.1\MailServer.AssemblyInfo.cs
+C:\Users\mogler\source\repos\MailServer\mailserver\src\bin\Debug\netcoreapp3.1\DnsClient.dll
+C:\Users\mogler\source\repos\MailServer\mailserver\src\obj\Debug\netcoreapp3.1\MailServer.csproj.CopyComplete
+C:\Users\mogler\source\repos\MailServer\mailserver\src\bin\Debug\netcoreapp3.1\MimeKit.dll
+C:\Users\mogler\source\repos\MailServer\mailserver\src\bin\Debug\netcoreapp3.1\BouncyCastle.Crypto.dll
