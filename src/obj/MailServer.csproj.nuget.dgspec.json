@@ -1,24 +1,23 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\mogler\\source\\repos\\MailServer\\mailserver\\src\\MailServer.csproj": {}
+    "C:\\Users\\chris\\GitReps\\CS\\src\\MailServer.csproj": {}
   },
   "projects": {
-    "C:\\Users\\mogler\\source\\repos\\MailServer\\mailserver\\src\\MailServer.csproj": {
+    "C:\\Users\\chris\\GitReps\\CS\\src\\MailServer.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\mogler\\source\\repos\\MailServer\\mailserver\\src\\MailServer.csproj",
+        "projectUniqueName": "C:\\Users\\chris\\GitReps\\CS\\src\\MailServer.csproj",
         "projectName": "MailServer",
-        "projectPath": "C:\\Users\\mogler\\source\\repos\\MailServer\\mailserver\\src\\MailServer.csproj",
-        "packagesPath": "C:\\Users\\mogler\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\mogler\\source\\repos\\MailServer\\mailserver\\src\\obj\\",
+        "projectPath": "C:\\Users\\chris\\GitReps\\CS\\src\\MailServer.csproj",
+        "packagesPath": "C:\\Users\\chris\\.nuget\\packages\\",
+        "outputPath": "C:\\Users\\chris\\GitReps\\CS\\src\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
-          "C:\\Microsoft\\Xamarin\\NuGet\\",
-          "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
+          "C:\\Microsoft\\Xamarin\\NuGet\\"
         ],
         "configFilePaths": [
-          "C:\\Users\\mogler\\AppData\\Roaming\\NuGet\\NuGet.Config",
+          "C:\\Users\\chris\\AppData\\Roaming\\NuGet\\NuGet.Config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config",
           "C:\\Program Files (x86)\\NuGet\\Config\\Xamarin.Offline.config"
         ],
@@ -27,8 +26,7 @@
         ],
         "sources": {
           "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
-          "https://api.nuget.org/v3/index.json": {},
-          "https://nuget.devexpress.com/c462pcsd4ADJhjiFSoNe29g4Mq7eTyofBIPqDTcR2izhahkPFz/api": {}
+          "https://api.nuget.org/v3/index.json": {}
         },
         "frameworks": {
           "netcoreapp3.1": {
