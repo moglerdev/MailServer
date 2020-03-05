@@ -1,2 +1,7 @@
 .vs/
-/src/.vs
+.vscode/
+
+src/obj/
+src/bin/
+src/.vs/
+src/.vscode/
