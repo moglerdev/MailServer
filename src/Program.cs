@@ -1,4 +1,20 @@
-﻿using MailKit.Net.Smtp;
+﻿// MailServer - Easy and Fast Mailserver 
+//
+// Copyright(C) 2020 Christopher Mogler
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along with this program.If not, see<https://www.gnu.org/licenses/>.
+
+using MailKit.Net.Smtp;
 using MailServer.Common;
 using MailServer.SMTP;
 using MimeKit;
@@ -9,6 +25,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,19 +33,19 @@ using System.Threading.Tasks;
 namespace MailServer {
     /*
      * https://www.greenend.org.uk/rjk/tech/smtpreplies.html
-     * https://mxtoolbox.com/SuperTool.aspx?action=mx%3adotbehindyou.de&run=toolpage
-     *      SMTP TLS
-     *      SMTP Open Relay
-     *      SMTP Banner
      */
     class Program {
+        public static X509Certificate Certificate { get; private set; }
+
         static List<SmtpClientHandler> clientList = new List<SmtpClientHandler>();
 
         static void Main(string[] args)
         {
             Config.Current = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText("Config.json"));
 
-            //Test();
+            Certificate = new X509Certificate2(Config.Current.Certificate, "123", X509KeyStorageFlags.MachineKeySet);
+
+            Test();
 
             IPAddress adr;
             if (!IPAddress.TryParse(Config.Current.Listen, out adr))
@@ -44,8 +61,6 @@ namespace MailServer {
                 client.OnDisconnect += ClientDisconnect;
                 clientList.Add(client);
             }
-
-            //Console.WriteLine("Hello World!");
         }
 
         static void Test()
@@ -54,11 +69,11 @@ namespace MailServer {
             {
                 using (SmtpClient _client = new SmtpClient())
                 {
-                    _client.Connect("localhost", 25, MailKit.Security.SecureSocketOptions.None);
+                    _client.Connect("localhost", 25, MailKit.Security.SecureSocketOptions.StartTls);
 
                     MimeMessage msg = new MimeMessage();
                     msg.From.Add(new MailboxAddress("test", "test@test.de"));
-                    msg.To.Add(new MailboxAddress("chris", "chris@chris.de"));
+                    msg.To.Add(new MailboxAddress("chris", "mogler@dotbehindyou.de"));
                     msg.Subject = "Test";
 
                     BodyBuilder bb = new BodyBuilder();
@@ -68,7 +83,7 @@ namespace MailServer {
 
                     _client.Send(msg);
 
-                    //_client.Disconnect(true);
+                    _client.Disconnect(true);
                 }
 
                 Console.WriteLine("Client is fin!");

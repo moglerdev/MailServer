@@ -1,4 +1,6 @@
 {
+  "domain":  "mail.dotbehindyou.de",
+  "certificate": "dy.pfx",
   "accounts": [
     "mogler@dotbehindyou.de",
     "test@dotbehindyou.de",

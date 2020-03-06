@@ -1,10 +1,27 @@
-﻿using MailServer.Common;
+﻿// MailServer - Easy and Fast Mailserver 
+//
+// Copyright(C) 2020 Christopher Mogler
+//
+// This program is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// This program is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License along with this program.If not, see<https://www.gnu.org/licenses/>.
+
+using MailServer.Common;
 using MimeKit;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
 
@@ -18,8 +35,8 @@ namespace MailServer.SMTP
         MAIL = 3,
         RCPT = 4,
         DATA = 5,
+        STARTTLS = 6,
     }
-
 
     delegate void MailArrived(ReceivedMessage mail);
     delegate void ClientDisconnect(SmtpClientHandler client);
@@ -32,6 +49,11 @@ namespace MailServer.SMTP
         {
             try
             {
+                if (message.Trim() == "STARTTLS")
+                {
+                    return SmtpMessageType.STARTTLS;
+                }
+
                 String prefix = message.Substring(0, 4);
                 if (prefix == "QUIT")
                     return SmtpMessageType.QUIT;
@@ -68,14 +90,16 @@ namespace MailServer.SMTP
 
             return new MailboxAddress(name, mail);
         }
+
         public static Boolean ExistMailbox(MailboxAddress address) => Config.Current.Accounts.Any(x => x == address.Address);
 
-        event MailArrived OnMailArrived;
+
+        public event MailArrived OnMailArrived;
         public event ClientDisconnect OnDisconnect;
 
         public TcpClient Client { get; private set; }
         private readonly Socket clientSocket;
-        protected NetworkStream Stream { get; private set; }
+        protected Stream Stream { get; private set; }
 
         public Boolean IsConnected { get => clientSocket.Poll(1000, SelectMode.SelectRead); }
 
@@ -89,7 +113,7 @@ namespace MailServer.SMTP
 
             this.OnMailArrived += this.MailArrived;
 
-            this.SendMessage("220 Hello MyServer!");
+            this.SendMessage($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
 
             this.BeginReadMessage();
         }
@@ -211,8 +235,24 @@ namespace MailServer.SMTP
                 else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
                 {
                     var spfValidator = new ARSoft.Tools.Net.Spf.SpfValidator();
-                    // TODO EHLO -> Return Extensions
-                    this.SendMessage($"250 <domain> HELLO [${this.clientSocket.RemoteEndPoint.ToString()}]");
+                    this.SendMessage($"250-{Config.Current.Domain} Hello [{this.clientSocket.RemoteEndPoint.ToString()}]");
+
+                    if(type == SmtpMessageType.EHLO)
+                    {
+                        // Send Exentsions
+                        this.SendMessage("250-STARTTLS");
+                        //this.SendMessage("250-SIZE 12345678");
+                        this.SendMessage("250 HELP");
+                    }
+
+                    this.BeginReadMessage();
+                }
+                else if (type == SmtpMessageType.STARTTLS)
+                {
+                    this.SendMessage("220 SMTP server ready");
+                    SslStream tlsStream = new SslStream(this.Client.GetStream(), false, new RemoteCertificateValidationCallback((sender, cert, chain, ssl) => true));
+                    tlsStream.AuthenticateAsServer(Program.Certificate, false, System.Security.Authentication.SslProtocols.Tls12, false);
+                    this.Stream = tlsStream;
 
                     this.BeginReadMessage();
                 }
@@ -245,7 +285,7 @@ namespace MailServer.SMTP
                 }
                 else
                 {
-                    this.SendMessage("421 <domain> Service not available, closing transmission channel");
+                    this.SendMessage($"421 {Config.Current.Domain} Service not available, closing transmission channel");
 
                     this.BeginReadMessage();
                 }
