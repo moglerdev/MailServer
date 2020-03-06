@@ -1,4 +1,5 @@
 ﻿using MailKit.Net.Smtp;
+using MailServer.Common;
 using MailServer.SMTP;
 using MimeKit;
 using System;
@@ -25,13 +26,12 @@ namespace MailServer {
 
         static void Main(string[] args)
         {
-            Console.Write("IP:");
-            String _adr = Console.ReadLine();
+            Config.Current = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText("Config.json"));
 
-            Test();
+            //Test();
 
             IPAddress adr;
-            if (!IPAddress.TryParse(_adr, out adr))
+            if (!IPAddress.TryParse(Config.Current.Listen, out adr))
                 adr = IPAddress.Any;
 
             IPEndPoint endPoint = new IPEndPoint(adr, 25);

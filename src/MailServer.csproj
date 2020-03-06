@@ -6,13 +6,17 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ARSoft.Tools.Net" Version="2.2.9" />
     <PackageReference Include="DnsClient" Version="1.2.0" />
     <PackageReference Include="MailKit" Version="2.5.1" />
     <PackageReference Include="MimeKit" Version="2.5.1" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="Common\" />
+    <None Update="Config.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

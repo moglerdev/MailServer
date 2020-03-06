@@ -1,7 +1,10 @@
-﻿using MimeKit;
+﻿using MailServer.Common;
+using MimeKit;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Net;
 using System.Net.Sockets;
 using System.Text;
 
@@ -65,6 +68,7 @@ namespace MailServer.SMTP
 
             return new MailboxAddress(name, mail);
         }
+        public static Boolean ExistMailbox(MailboxAddress address) => Config.Current.Accounts.Any(x => x == address.Address);
 
         event MailArrived OnMailArrived;
         public event ClientDisconnect OnDisconnect;
@@ -73,13 +77,7 @@ namespace MailServer.SMTP
         private readonly Socket clientSocket;
         protected NetworkStream Stream { get; private set; }
 
-        public Boolean IsConnected
-        {
-            get
-            {
-                return clientSocket.Poll(1000, SelectMode.SelectRead);
-            }
-        }
+        public Boolean IsConnected { get => clientSocket.Poll(1000, SelectMode.SelectRead); }
 
         private Encoding encoder = Encoding.UTF8;
 
@@ -212,8 +210,9 @@ namespace MailServer.SMTP
                 }
                 else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
                 {
+                    var spfValidator = new ARSoft.Tools.Net.Spf.SpfValidator();
                     // TODO EHLO -> Return Extensions
-                    this.SendMessage("250 Requested mail action okay, completed");
+                    this.SendMessage($"250 <domain> HELLO [${this.clientSocket.RemoteEndPoint.ToString()}]");
 
                     this.BeginReadMessage();
                 }
@@ -226,8 +225,14 @@ namespace MailServer.SMTP
                 }
                 else if (type == SmtpMessageType.RCPT)
                 {
-                    this.currentMail.Receivers.Add(GetAddress(message));
-                    this.SendMessage("250 Requested mail action okay, completed");
+                    MailboxAddress recv = GetAddress(message);
+                    if (ExistMailbox(recv))
+                    {
+                        this.currentMail.Receivers.Add(recv);
+                        this.SendMessage("250 Requested mail action okay, completed");
+                    }
+                    else
+                        this.SendMessage("550 Requested action not taken: mailbox unavailable");
 
                     this.BeginReadMessage();
                 }

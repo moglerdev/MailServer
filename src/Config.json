@@ -1,0 +1,8 @@
+{
+  "accounts": [
+    "mogler@dotbehindyou.de",
+    "test@dotbehindyou.de",
+    "info@dotbehindyou.de"
+  ],
+  "listen": "0.0.0.0"
+}
