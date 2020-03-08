@@ -32,7 +32,7 @@ namespace MailServer.SMTP
 
         private String GetClearFilename()
         {
-            String name = this.MimeMessage.Subject;
+            String name = this.MimeMessage.MessageId ?? Guid.NewGuid().ToString();
             foreach (char invalid in Path.GetInvalidFileNameChars())
             {
                 name.Replace(invalid, '_');

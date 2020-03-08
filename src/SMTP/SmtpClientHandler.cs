@@ -1,4 +1,4 @@
-﻿// MailServer - Easy and Fast Mailserver 
+﻿// MailServer - Easy and Fast Mailserver
 //
 // Copyright(C) 2020 Christopher Mogler
 //
@@ -128,8 +128,20 @@ namespace MailServer.SMTP
         private Byte[] buffer = new byte[bufferSize];
         private IAsyncResult BeginReadMessage()
         {
-            lock (this.buffer)
-                return this.Stream.BeginRead(this.buffer, 0, this.buffer.Length, new AsyncCallback(this.ReceiveMessageCallback), this.Stream);
+            try
+            {
+                lock (this.buffer)
+                    return this.Stream.BeginRead(this.buffer, 0, this.buffer.Length, new AsyncCallback(this.ReceiveMessageCallback), this.Stream);
+            }
+            catch (Exception e)
+            {
+                if (this.Client.Connected)
+                    this.SendMessage($"421 {Config.Current.Domain} Service not available, closing transmission channel");
+
+                this.OnDisconnect?.Invoke(this);
+            }
+
+            return null;
         }
 
         private void SendMessage(String message)
@@ -165,11 +177,13 @@ namespace MailServer.SMTP
 
                     memoryBuffer.Write(this.buffer, 0, readBytes);
 
-                    if (this.buffer[readBytes - 5] == (byte)'\r' && this.buffer[readBytes - 4] == (byte)'\n'
-                        && this.buffer[readBytes - 3] == (byte)'.'
-                        && this.buffer[readBytes - 2] == (byte)'\r' && this.buffer[readBytes - 1] == (byte)'\n')
+                    _buffer = memoryBuffer.ToArray();
+                    Int32 seek = _buffer.Length;
+
+                    if (seek > 4 && _buffer[seek - 5] == (byte)'\r' && _buffer[seek - 4] == (byte)'\n'
+                        && _buffer[seek - 3] == (byte)'.'
+                        && _buffer[seek - 2] == (byte)'\r' && _buffer[seek - 1] == (byte)'\n')
                     {
-                        _buffer = memoryBuffer.ToArray();
                         memoryBuffer.Dispose();
                         memoryBuffer = null;
                     }
@@ -234,7 +248,7 @@ namespace MailServer.SMTP
                 }
                 else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
                 {
-                    var spfValidator = new ARSoft.Tools.Net.Spf.SpfValidator();
+                    //var spfValidator = new ARSoft.Tools.Net.Spf.SpfValidator();
                     this.SendMessage($"250-{Config.Current.Domain} Hello [{this.clientSocket.RemoteEndPoint.ToString()}]");
 
                     if(type == SmtpMessageType.EHLO)
