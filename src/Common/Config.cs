@@ -1,4 +1,4 @@
-﻿// MailServer - Easy and Fast Mailserver 
+﻿// MailServer - Easy and Fast Mailserver
 //
 // Copyright(C) 2020 Christopher Mogler
 //
@@ -23,7 +23,13 @@ namespace MailServer.Common {
         public static Config Current;
         public String Domain { get; set; }
         public String Listen { get; set; }
-        public String Certificate { get; set; }
+        public CertificateConfig Certificate { get; set; }
         public List<String> Accounts { get; set; }
+
+        public class CertificateConfig
+        {
+            public String Filename { get; set; }
+            public String Password { get; set; }
+        }
     }
 }

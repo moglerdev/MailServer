@@ -1,4 +1,4 @@
-﻿// MailServer - Easy and Fast Mailserver 
+﻿// MailServer - Easy and Fast Mailserver
 //
 // Copyright(C) 2020 Christopher Mogler
 //
@@ -43,7 +43,7 @@ namespace MailServer {
         {
             Config.Current = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText("Config.json"));
 
-            Certificate = new X509Certificate2(Config.Current.Certificate, "123", X509KeyStorageFlags.MachineKeySet);
+            Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
 
             Test();
 

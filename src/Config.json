@@ -1,6 +1,9 @@
 {
   "domain":  "mail.dotbehindyou.de",
-  "certificate": "dy.pfx",
+  "certificate": {
+    "filename": "dy.pfx",
+    "password": "123"
+  },
   "accounts": [
     "mogler@dotbehindyou.de",
     "test@dotbehindyou.de",
