@@ -37,6 +37,7 @@ namespace MailServer.SMTP
         RCPT = 4,
         DATA = 5,
         STARTTLS = 6,
+        RSET = 7,
     }
 
     delegate void MailArrived(ReceivedMessage mail);
@@ -68,6 +69,8 @@ namespace MailServer.SMTP
                     return SmtpMessageType.RCPT;
                 else if (prefix == "DATA")
                     return SmtpMessageType.DATA;
+                else if (prefix == "RSET")
+                    return SmtpMessageType.RSET;
             }
             catch (Exception e) { }
             throw new Exception("Received message not supported!");
@@ -179,6 +182,14 @@ namespace MailServer.SMTP
             this.timer.Stop();
             Int32 readBytes = this.Stream.EndRead(result);
 
+            if(readBytes == 0)
+            {
+                System.Threading.Thread.Sleep(250);
+                this.BeginReadMessage();
+                return;
+            }
+
+
             if (readBytes < 2)
             {
                 if (memoryBuffer == null)
@@ -190,32 +201,64 @@ namespace MailServer.SMTP
             }
 
             Byte[] _buffer = null;
+            lock (this.buffer)
+            {
+                if (memoryBuffer == null)
+                    memoryBuffer = new MemoryStream();
+
+                memoryBuffer.Write(this.buffer, 0, readBytes);
+
+                _buffer = memoryBuffer.ToArray();
+                Int32 seek = _buffer.Length;
+
+                if ((!isData || (seek > 4 && _buffer[seek - 5] == (byte)'\r' && _buffer[seek - 4] == (byte)'\n'
+                    && _buffer[seek - 3] == (byte)'.'))
+                    && _buffer[seek - 2] == (byte)'\r' && _buffer[seek - 1] == (byte)'\n')
+                {
+                    memoryBuffer.Dispose();
+                    memoryBuffer = null;
+                }
+                else
+                {
+                    this.BeginReadMessage();
+                    return;
+                }
+            }
+
+            String message = this.encoder.GetString(_buffer);
+            SmtpMessageType? type = null;
+
+            try
+            {
+                type = GetMessageType(message);
+                Console.WriteLine("<Client>:" + message);
+            }
+            catch (Exception e)
+            {
+                if (!isData)
+                {
+                    this.SendMessage("500 Syntax error, command unrecognised");
+                    this.BeginReadMessage();
+                    return;
+                }
+            }
+
+            if (type == SmtpMessageType.RSET)
+            {
+                this.isData = false;
+                this.memoryBuffer?.Dispose();
+                this.memoryBuffer = null;
+
+                this.currentMail = null;
+
+                this.SendMessage("250 Requested mail action okay, completed");
+                this.BeginReadMessage();
+                return;
+            }
+
 
             if (isData)
             {
-                lock (this.buffer)
-                {
-                    if (memoryBuffer == null)
-                        memoryBuffer = new MemoryStream();
-
-                    memoryBuffer.Write(this.buffer, 0, readBytes);
-
-                    _buffer = memoryBuffer.ToArray();
-                    Int32 seek = _buffer.Length;
-
-                    if (seek > 4 && _buffer[seek - 5] == (byte)'\r' && _buffer[seek - 4] == (byte)'\n'
-                        && _buffer[seek - 3] == (byte)'.'
-                        && _buffer[seek - 2] == (byte)'\r' && _buffer[seek - 1] == (byte)'\n')
-                    {
-                        memoryBuffer.Dispose();
-                        memoryBuffer = null;
-                    }
-                    else
-                    {
-                        this.BeginReadMessage();
-                        return;
-                    }
-                }
                 using (MemoryStream ms = new MemoryStream(_buffer))
                     this.currentMail.MimeMessage = MimeMessage.Load(ms);
 
@@ -229,42 +272,6 @@ namespace MailServer.SMTP
             }
             else
             {
-                lock (this.buffer)
-                {
-                    if (memoryBuffer == null)
-                        memoryBuffer = new MemoryStream();
-
-                    memoryBuffer.Write(this.buffer, 0, readBytes);
-
-                    if (this.buffer[readBytes - 2] == (byte)'\r' && this.buffer[readBytes - 1] == (byte)'\n')
-                    {
-                        _buffer = memoryBuffer.ToArray();
-                        memoryBuffer.Dispose();
-                        memoryBuffer = null;
-                    }
-                    else
-                    {
-                        this.BeginReadMessage();
-                        return;
-                    }
-                }
-
-                String message = this.encoder.GetString(_buffer);
-                SmtpMessageType type;
-
-                try
-                {
-                    type = GetMessageType(message);
-                }
-                catch (Exception e)
-                {
-                    this.SendMessage("500 Syntax error, command unrecognised");
-                    this.BeginReadMessage();
-                    return;
-                }
-
-                Console.WriteLine("<Client>:" + message);
-
                 if (type == SmtpMessageType.QUIT)
                 {
                     this.Close();

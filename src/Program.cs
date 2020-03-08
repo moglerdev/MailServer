@@ -86,12 +86,13 @@ namespace MailServer {
                     _client.Disconnect(true);
                 }
 
-                Console.WriteLine("Client is fin!");
+                Console.WriteLine("Test is finished!");
             });
         }
 
         static void ClientDisconnect(SmtpClientHandler smtp)
         {
+            Console.WriteLine("Client disconnected!");
             smtp.Dispose();
             clientList.Remove(smtp);
         }
