@@ -24,6 +24,7 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
+using System.Timers;
 
 namespace MailServer.SMTP
 {
@@ -104,6 +105,7 @@ namespace MailServer.SMTP
         public Boolean IsConnected { get => clientSocket.Poll(1000, SelectMode.SelectRead); }
 
         private Encoding encoder = Encoding.UTF8;
+        Timer timer;
 
         public SmtpClientHandler(TcpClient client)
         {
@@ -112,13 +114,32 @@ namespace MailServer.SMTP
             this.Stream = client.GetStream();
 
             this.OnMailArrived += this.MailArrived;
+            this.timer = new Timer(30000);
+            this.timer.Elapsed += this.CheckConnection;
 
             this.SendMessage($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
 
             this.BeginReadMessage();
+
+
         }
 
         private Boolean isData = false;
+
+        protected virtual void CheckConnection(object sender, EventArgs eventArgs)
+        {
+            this.timer.Stop();
+
+            if (this.IsConnected)
+            {
+                this.SendMessage($"451 Timeout waiting for client input [{Config.Current.Domain}]");
+
+                this.Client.Close();
+                this.OnDisconnect?.Invoke(this);
+            }
+
+            this.OnDisconnect?.Invoke(this);
+        }
 
         protected virtual void MailArrived(ReceivedMessage mail)
         {
@@ -128,6 +149,7 @@ namespace MailServer.SMTP
         private Byte[] buffer = new byte[bufferSize];
         private IAsyncResult BeginReadMessage()
         {
+            this.timer.Start();
             try
             {
                 lock (this.buffer)
@@ -136,7 +158,7 @@ namespace MailServer.SMTP
             catch (Exception e)
             {
                 if (this.Client.Connected)
-                    this.SendMessage($"421 {Config.Current.Domain} Service not available, closing transmission channel");
+                    this.SendMessage($"451 Requested action aborted: local error in processing");
 
                 this.OnDisconnect?.Invoke(this);
             }
@@ -154,6 +176,7 @@ namespace MailServer.SMTP
         MemoryStream memoryBuffer = null;
         private void ReceiveMessageCallback(IAsyncResult result)
         {
+            this.timer.Stop();
             Int32 readBytes = this.Stream.EndRead(result);
 
             if (readBytes < 2)
@@ -310,7 +333,7 @@ namespace MailServer.SMTP
         {
             this.OnDisconnect?.Invoke(this);
             if (this.Client != null && this.Client.Connected)
-                this.SendMessage("221 <domain> Service closing transmission channel");
+                this.SendMessage($"221 {Config.Current.Domain} Service closing transmission channel");
 
             this.Client?.Close();
 

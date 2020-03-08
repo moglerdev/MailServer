@@ -73,7 +73,7 @@ namespace MailServer {
 
                     MimeMessage msg = new MimeMessage();
                     msg.From.Add(new MailboxAddress("test", "test@test.de"));
-                    msg.To.Add(new MailboxAddress("chris", "mogler@dotbehindyou.de"));
+                    msg.To.Add(new MailboxAddress("Test-Email", "debug@debug"));
                     msg.Subject = "Test";
 
                     BodyBuilder bb = new BodyBuilder();
