@@ -19,10 +19,12 @@ using MimeKit;
 using System;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
 using System.Timers;
+using System.Security.Authentication;
 
 // TODO:
 //  - Add Authentication
@@ -43,6 +45,7 @@ namespace MailServer.SMTP
         DATA = 5,
         STARTTLS = 6,
         RSET = 7,
+        AUTH = 8,
     }
 
     delegate void MailArrived(ReceivedMessage mail);
@@ -65,6 +68,8 @@ namespace MailServer.SMTP
                 String prefix = message.Substring(0, 4);
                 if (prefix == "QUIT")
                     return SmtpMessageType.QUIT;
+                else if (prefix == "AUTH")
+                    return SmtpMessageType.AUTH;
                 else if (prefix == "HELO")
                     return SmtpMessageType.HELO;
                 else if (prefix == "EHLO")
@@ -109,7 +114,9 @@ namespace MailServer.SMTP
         public TcpClient Client { get; private set; }
         protected Stream Stream { get; private set; }
         public Boolean IsConnected { get => this.Client != null && this.Client.Connected; }
+        public String ClientName { get; private set; }
         public Boolean IsAuthenticated { get; private set; }
+        public Boolean IsEncrypted { get; private set; }
         #endregion
 
         #region Events
@@ -120,6 +127,8 @@ namespace MailServer.SMTP
         #region Readonly
         private readonly Socket _clientSocket;
         private readonly Timer _timer = new Timer(30000);
+
+        public readonly Boolean AllowSendMails;
         #endregion
 
         #region Instance
@@ -131,8 +140,11 @@ namespace MailServer.SMTP
         #endregion
 
         #region Constructor
-        public SmtpClientHandler(TcpClient client)
+        public SmtpClientHandler(TcpClient client, Boolean allowSendMails = false, SslProtocols encryption = SslProtocols.None)
         {
+            // TODO: SSL Connection
+            this.AllowSendMails = allowSendMails;
+
             this.Client = client;
             this._clientSocket = client.Client;
             this.Stream = client.GetStream();
@@ -183,11 +195,46 @@ namespace MailServer.SMTP
             return null;
         }
 
-        private Boolean VerifyCommand(SmtpMessageType type, String message)
+        protected Boolean VerifyCommand(SmtpMessageType type)//, out String message)
         {
-            // TODO: Verify Command and Send specified error, when command not valid!
+            if (type == SmtpMessageType.QUIT)
+                return true;
+           
+            if (String.IsNullOrEmpty(this.ClientName))
+            {
+                if (type == SmtpMessageType.EHLO || type == SmtpMessageType.HELO)
+                    return true;
+            }
+            else
+            {
+                if (type == SmtpMessageType.STARTTLS)
+                    return !this.IsEncrypted;
+
+                if (type == SmtpMessageType.AUTH)
+                    return this.AllowSendMails && this.IsEncrypted;
+
+                if (type == SmtpMessageType.MAIL)
+                    return true; // TODO: Test SPF-DSN and MX-Record and check when E-Mail is outgo, is the User authenticated
+
+                if (type == SmtpMessageType.RCPT)
+                    return this._currentMail != null;
+
+                if (type == SmtpMessageType.DATA)
+                    return this._currentMail != null && this._currentMail.Receivers.Any();
+
+                if (type == SmtpMessageType.RSET)
+                    return true;
+            }
 
             return false;
+        }
+
+        protected virtual void SendExentsions()
+        {
+            // 50 AUTH CRAM-MD5 LOGIN PLAIN
+            // Send Exentsions
+            this.SendMessage("250-STARTTLS");
+            this.SendMessage("250 AUTH LOGIN PLAIN");
         }
 
         private void SendMessage(String message)
@@ -298,16 +345,11 @@ namespace MailServer.SMTP
                     }
                     else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
                     {
-                        //var spfValidator = new ARSoft.Tools.Net.Spf.SpfValidator();
-                        this.SendMessage($"250-{Config.Current.Domain} Hello [{this._clientSocket.RemoteEndPoint.ToString()}]");
+                        this.ClientName = message.Substring(4, message.Length - 4).Trim();
+                        this.SendMessage($"250-{Config.Current.Domain} Hello [{(this._clientSocket.RemoteEndPoint as IPEndPoint).Address.ToString()}]");
 
                         if (type == SmtpMessageType.EHLO)
-                        {
-                            // Send Exentsions
-                            this.SendMessage("250-STARTTLS");
-                            //this.SendMessage("250-SIZE 12345678");
-                            this.SendMessage("250 HELP");
-                        }
+                            this.SendExentsions();
 
                         this.BeginReadMessage();
                     }
@@ -315,7 +357,7 @@ namespace MailServer.SMTP
                     {
                         this.SendMessage("220 SMTP server ready");
                         SslStream tlsStream = new SslStream(this.Client.GetStream(), false, new RemoteCertificateValidationCallback((sender, cert, chain, ssl) => true));
-                        tlsStream.AuthenticateAsServer(MailTransferAgent.Certificate, false, System.Security.Authentication.SslProtocols.Tls12, false);
+                        tlsStream.AuthenticateAsServer(MailTransferAgent.Certificate, false, SslProtocols.Tls12, false);
                         this.Stream = tlsStream;
 
                         this.BeginReadMessage();
@@ -386,12 +428,14 @@ namespace MailServer.SMTP
                 this.Client?.Close();
 
             this.IsAuthenticated = false;
+            this.ClientName = null;
+            this.IsEncrypted = false;
+            this._currentMail = null;
 
             this.Stream?.Dispose();
 
             this.Client?.Dispose();
             this.Client = null;
-            this._currentMail = null;
             this._memoryBuffer?.Dispose();
             this._memoryBuffer = null;
             this._buffer = null;
