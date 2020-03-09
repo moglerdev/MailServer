@@ -21,10 +21,6 @@ using MimeKit;
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net;
-using System.Net.Security;
-using System.Net.Sockets;
-using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Threading;
@@ -35,32 +31,18 @@ namespace MailServer {
      * https://www.greenend.org.uk/rjk/tech/smtpreplies.html
      */
     class Program {
-        public static X509Certificate Certificate { get; private set; }
-
-        static List<SmtpClientHandler> clientList = new List<SmtpClientHandler>();
 
         static void Main(string[] args)
         {
             Config.Current = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText("Config.json"));
+            MailTransferAgent.Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
 
-            Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
+            MailTransferAgent mta = new MailTransferAgent();
+            Task mtaTask = mta.StartAsync();
 
             Test();
 
-            IPAddress adr;
-            if (!IPAddress.TryParse(Config.Current.Listen, out adr))
-                adr = IPAddress.Any;
-
-            IPEndPoint endPoint = new IPEndPoint(adr, 25);
-            TcpListener listener = new TcpListener(endPoint);
-            listener.AllowNatTraversal(true);
-            listener.Start();
-            while (true)
-            {
-                SmtpClientHandler client = new SmtpClientHandler(listener.AcceptTcpClient());
-                client.OnDisconnect += ClientDisconnect;
-                clientList.Add(client);
-            }
+            mtaTask.Wait();
         }
 
         static void Test()
@@ -73,7 +55,7 @@ namespace MailServer {
 
                     MimeMessage msg = new MimeMessage();
                     msg.From.Add(new MailboxAddress("test", "test@test.de"));
-                    msg.To.Add(new MailboxAddress("Test-Email", "debug@debug"));
+                    msg.To.Add(new MailboxAddress("Test-Email", Config.Current.Accounts[0]));
                     msg.Subject = "Test";
 
                     BodyBuilder bb = new BodyBuilder();
@@ -88,13 +70,6 @@ namespace MailServer {
 
                 Console.WriteLine("Test is finished!");
             });
-        }
-
-        static void ClientDisconnect(SmtpClientHandler smtp)
-        {
-            Console.WriteLine("Client disconnected!");
-            smtp.Dispose();
-            clientList.Remove(smtp);
         }
     }
 }

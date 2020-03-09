@@ -3,8 +3,8 @@
   <PropertyGroup>
     <RevDeBugActive>True</RevDeBugActive>
     <MvcRazorCompileOnPublish>false</MvcRazorCompileOnPublish>
-    <RevDeBugCompilerPath>c:\users\mogler\appdata\local\microsoft\visualstudio\16.0_f8f36916\extensions\pcjmip4x.tfk\tmcc\</RevDeBugCompilerPath>
-    <CustomAfterMicrosoftCommonTargets>c:\users\mogler\appdata\local\microsoft\visualstudio\16.0_f8f36916\extensions\pcjmip4x.tfk\tmcc\RevDeBug.ImportAfter.targets</CustomAfterMicrosoftCommonTargets>
+    <RevDeBugCompilerPath>C:\USERS\MOGLER\APPDATA\LOCAL\MICROSOFT\VISUALSTUDIO\16.0_F8F36916\EXTENSIONS\PCJMIP4X.TFK\tmcc\</RevDeBugCompilerPath>
+    <CustomAfterMicrosoftCommonTargets>C:\USERS\MOGLER\APPDATA\LOCAL\MICROSOFT\VISUALSTUDIO\16.0_F8F36916\EXTENSIONS\PCJMIP4X.TFK\tmcc\RevDeBug.ImportAfter.targets</CustomAfterMicrosoftCommonTargets>
     <SaveMetadataAsync>true</SaveMetadataAsync>
     <RevDeBugDisableNuget>true</RevDeBugDisableNuget>
     <RevDeBugMetadataPath>C:\Users\mogler\Documents\RevDeBug\MailServer\Metadata\\</RevDeBugMetadataPath>
