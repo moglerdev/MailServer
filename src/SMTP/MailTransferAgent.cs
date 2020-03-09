@@ -1,4 +1,4 @@
-﻿// MailServer - Easy and Fast Mailserver
+﻿// MailServer - Easy and fast Mailserver
 //
 // Copyright(C) 2020 Christopher Mogler
 //
@@ -17,11 +17,8 @@
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
 using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
-using System.Security.Authentication;
 using MailServer.Common;
 using System.Threading.Tasks;
 using System.Threading;

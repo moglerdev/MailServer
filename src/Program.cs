@@ -1,4 +1,4 @@
-﻿// MailServer - Easy and Fast Mailserver
+﻿// MailServer - Easy and fast Mailserver
 //
 // Copyright(C) 2020 Christopher Mogler
 //
@@ -19,17 +19,19 @@ using MailServer.Common;
 using MailServer.SMTP;
 using MimeKit;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Security.Cryptography.X509Certificates;
-using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
 
+// TODO:
+//  - Database 
+//  - RFC 
+//  - SMTP (MTA)
+//  - IMAP (MDA)
+//  - Authentication
+//  - WebAPI (Configuration and MUA)
+
 namespace MailServer {
-    /*
-     * https://www.greenend.org.uk/rjk/tech/smtpreplies.html
-     */
     class Program {
 
         static void Main(string[] args)

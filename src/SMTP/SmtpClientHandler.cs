@@ -1,4 +1,4 @@
-﻿// MailServer - Easy and Fast Mailserver
+﻿// MailServer - Easy and fast Mailserver
 //
 // Copyright(C) 2020 Christopher Mogler
 //
@@ -17,14 +17,19 @@
 using MailServer.Common;
 using MimeKit;
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Text;
 using System.Timers;
+
+// TODO:
+//  - Add Authentication
+//  - Validate / Verify commands
+//  - Validate / Verify connected client
+//  - Add Whitelist
+//  - Handle send commands better
 
 namespace MailServer.SMTP
 {
@@ -104,6 +109,7 @@ namespace MailServer.SMTP
         public TcpClient Client { get; private set; }
         protected Stream Stream { get; private set; }
         public Boolean IsConnected { get => this.Client != null && this.Client.Connected; }
+        public Boolean IsAuthenticated { get; private set; }
         #endregion
 
         #region Events
@@ -378,6 +384,8 @@ namespace MailServer.SMTP
 
             if (this.IsConnected)
                 this.Client?.Close();
+
+            this.IsAuthenticated = false;
 
             this.Stream?.Dispose();
 
