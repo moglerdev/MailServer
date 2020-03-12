@@ -14,12 +14,15 @@
 //
 // You should have received a copy of the GNU General Public License along with this program.If not, see<https://www.gnu.org/licenses/>.
 
+using DnsClient;
 using MailKit.Net.Smtp;
 using MailServer.Common;
 using MailServer.SMTP;
 using MimeKit;
 using System;
 using System.IO;
+using System.Linq;
+using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
@@ -39,21 +42,35 @@ namespace MailServer {
             Config.Current = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText("Config.json"));
             MailTransferAgent.Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
 
-            MailTransferAgent mta = new MailTransferAgent();
+            MailTransferAgent mta = new MailTransferAgent(25);
             Task mtaTask = mta.StartAsync();
 
-            Test();
+            try
+            {
+                TestAsync().Wait();
+                Console.WriteLine("Test success");
 
-            mtaTask.Wait();
+                mtaTask.Wait();
+            }
+            catch(Exception e)
+            {
+                mta.Stop();
+                Console.WriteLine("Test failed! Service stopped!");
+            }
         }
 
-        static void Test()
+        static async Task TestAsync()
         {
-            Task clientTask = Task.Run(() =>
+            try
             {
                 using (SmtpClient _client = new SmtpClient())
                 {
-                    _client.Connect("localhost", 25, MailKit.Security.SecureSocketOptions.StartTls);
+                    _client.ServerCertificateValidationCallback = (s, c, a, l) => true;
+
+                    _client.ClientCertificates = new X509CertificateCollection();
+                    _client.ClientCertificates.Add(MailTransferAgent.Certificate);
+
+                    _client.Connect("localhost", 25, MailKit.Security.SecureSocketOptions.Auto);
 
                     MimeMessage msg = new MimeMessage();
                     msg.From.Add(new MailboxAddress("test", "test@test.de"));
@@ -65,13 +82,17 @@ namespace MailServer {
 
                     msg.Body = bb.ToMessageBody();
 
-                    _client.Send(msg);
+                    await _client.SendAsync(msg);
 
-                    _client.Disconnect(true);
+                    await _client.DisconnectAsync(true);
                 }
-
-                Console.WriteLine("Test is finished!");
-            });
+            }
+            catch(Exception e)
+            {
+                Console.WriteLine(e);
+                throw e;
+            }
+            //throw new Exception();
         }
     }
 }

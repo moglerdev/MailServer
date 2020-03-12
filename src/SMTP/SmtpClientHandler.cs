@@ -25,6 +25,7 @@ using System.Net.Sockets;
 using System.Text;
 using System.Timers;
 using System.Security.Authentication;
+using System.Collections.Generic;
 
 // TODO:
 //  - Add Authentication
@@ -84,7 +85,7 @@ namespace MailServer.SMTP
                     return SmtpMessageType.RSET;
             }
             catch (Exception e) { }
-            throw new Exception("Received message not supported!");
+            throw new NotSupportedException("Received message not supported!");
         }
 
         public static MailboxAddress GetAddress(String message)
@@ -115,8 +116,10 @@ namespace MailServer.SMTP
         protected Stream Stream { get; private set; }
         public Boolean IsConnected { get => this.Client != null && this.Client.Connected; }
         public String ClientName { get; private set; }
+        public String ClientDomain { get; private set; }
+        public IPAddress ClientAddress { get => (this._clientSocket.RemoteEndPoint as IPEndPoint).Address; }
         public Boolean IsAuthenticated { get; private set; }
-        public Boolean IsEncrypted { get; private set; }
+        public SslProtocols Encryption { get; private set; } = SslProtocols.None;
         #endregion
 
         #region Events
@@ -128,7 +131,7 @@ namespace MailServer.SMTP
         private readonly Socket _clientSocket;
         private readonly Timer _timer = new Timer(30000);
 
-        public readonly Boolean AllowSendMails;
+        public readonly Boolean IsDeliverService;
         #endregion
 
         #region Instance
@@ -140,19 +143,27 @@ namespace MailServer.SMTP
         #endregion
 
         #region Constructor
-        public SmtpClientHandler(TcpClient client, Boolean allowSendMails = false, SslProtocols encryption = SslProtocols.None)
+        public SmtpClientHandler(TcpClient client, Boolean isDeliverService = false, SslProtocols encryption = SslProtocols.None)
         {
-            // TODO: SSL Connection
-            this.AllowSendMails = allowSendMails;
+            this.IsDeliverService = isDeliverService;
 
             this.Client = client;
             this._clientSocket = client.Client;
+
+            if(encryption != SslProtocols.None)
+            {
+                this.InitEncryptedStream(encryption);
+            }
             this.Stream = client.GetStream();
 
             this.OnMailArrived += this.MailArrived;
 
             this._timer.Elapsed += this.CheckConnection;
             this._timer.AutoReset = false;
+
+            var lookup = new DnsClient.LookupClient();
+            var query  = lookup.QueryReverse(this.ClientAddress);
+            this.ClientDomain = query.Answers.PtrRecords().FirstOrDefault()?.PtrDomainName;
 
             this.SendMessage($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
 
@@ -208,13 +219,19 @@ namespace MailServer.SMTP
             else
             {
                 if (type == SmtpMessageType.STARTTLS)
-                    return !this.IsEncrypted;
+                    return this.Encryption == SslProtocols.None;
 
                 if (type == SmtpMessageType.AUTH)
-                    return this.AllowSendMails && this.IsEncrypted;
+                    return this.IsDeliverService && this.Encryption != SslProtocols.None;
 
                 if (type == SmtpMessageType.MAIL)
-                    return true; // TODO: Test SPF-DSN and MX-Record and check when E-Mail is outgo, is the User authenticated
+                {
+                    if (this.IsAuthenticated)
+                    {
+                        return true; // TODO: Test SPF-DSN and MX-Record and check when E-Mail is outgo, is the User authenticated
+                    }
+                    return DnsHelper.CheckSpf(this._currentMail.Sender.Address, this.ClientAddress);
+                }
 
                 if (type == SmtpMessageType.RCPT)
                     return this._currentMail != null;
@@ -229,12 +246,33 @@ namespace MailServer.SMTP
             return false;
         }
 
+        protected virtual void InitEncryptedStream(SslProtocols protocols = SslProtocols.Tls12 | SslProtocols.Tls13)
+        {
+            SslStream encryptedStream = new SslStream(this.Client.GetStream(), false, new RemoteCertificateValidationCallback((sender, cert, chain, ssl) => true));
+            encryptedStream.AuthenticateAsServer(MailTransferAgent.Certificate, false, protocols, false); // TODO: Über Config die erlaubten Verschlüsselungen einstellen
+            this.Encryption = encryptedStream.SslProtocol;
+            this.Stream = encryptedStream;
+        }
+
+        protected Boolean VerifySender(String mail)
+        {
+
+            return false;
+        }
+
         protected virtual void SendExentsions()
         {
+            List<String> exentsions = new List<string>();
             // 50 AUTH CRAM-MD5 LOGIN PLAIN
             // Send Exentsions
-            this.SendMessage("250-STARTTLS");
-            this.SendMessage("250 AUTH LOGIN PLAIN");
+            exentsions.Add("STARTTLS");
+            if(this.IsDeliverService)
+                exentsions.Add("AUTH LOGIN PLAIN");
+
+            for(int i = 0; i < exentsions.Count; ++i)
+            {
+                this.SendMessage($"250{(exentsions.Count - 1 < i ? "-" : " " )}"+ exentsions[i]);
+            }
         }
 
         private void SendMessage(String message)
@@ -334,40 +372,41 @@ namespace MailServer.SMTP
                     this.OnMailArrived?.Invoke(this._currentMail);
                     this.SendMessage("250 Requested mail action okay, completed");
                     this._isData = false;
-
-                    this.BeginReadMessage();
                 }
                 else
                 {
                     if (type == SmtpMessageType.QUIT)
                     {
                         this.Close($"221 {Config.Current.Domain} Service closing transmission channel");
+                        return;
                     }
                     else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
                     {
                         this.ClientName = message.Substring(4, message.Length - 4).Trim();
-                        this.SendMessage($"250-{Config.Current.Domain} Hello [{(this._clientSocket.RemoteEndPoint as IPEndPoint).Address.ToString()}]");
+                        this.SendMessage($"250-{Config.Current.Domain} Hello [{this.ClientAddress.ToString()}]");
 
                         if (type == SmtpMessageType.EHLO)
                             this.SendExentsions();
-
-                        this.BeginReadMessage();
                     }
                     else if (type == SmtpMessageType.STARTTLS)
                     {
-                        this.SendMessage("220 SMTP server ready");
-                        SslStream tlsStream = new SslStream(this.Client.GetStream(), false, new RemoteCertificateValidationCallback((sender, cert, chain, ssl) => true));
-                        tlsStream.AuthenticateAsServer(MailTransferAgent.Certificate, false, SslProtocols.Tls12, false);
-                        this.Stream = tlsStream;
+                        if (this.VerifyCommand(SmtpMessageType.STARTTLS))
+                        {
+                            this.SendMessage("220 SMTP server ready");
+                            this.InitEncryptedStream();
+                        }
 
-                        this.BeginReadMessage();
                     }
                     else if (type == SmtpMessageType.MAIL)
                     {
                         this._currentMail = new ReceivedMessage(GetAddress(message));
-                        this.SendMessage("250 Requested mail action okay, completed");
-
-                        this.BeginReadMessage();
+                        if(VerifyCommand(SmtpMessageType.MAIL))
+                            this.SendMessage("250 Requested mail action okay, completed");
+                        else
+                        {
+                            this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
+                            return;
+                        }
                     }
                     else if (type == SmtpMessageType.RCPT)
                     {
@@ -379,23 +418,19 @@ namespace MailServer.SMTP
                         }
                         else
                             this.SendMessage("550 Requested action not taken: mailbox unavailable");
-
-                        this.BeginReadMessage();
                     }
                     else if (type == SmtpMessageType.DATA)
                     {
                         this._isData = true;
                         this.SendMessage("354 Start mail input; end with <CRLF>.<CRLF>");
-
-                        this.BeginReadMessage();
                     }
                     else
                     {
-                        this.SendMessage($"421 {Config.Current.Domain} Service not available, closing transmission channel");
-
-                        this.BeginReadMessage();
+                        this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
+                        return;
                     }
                 }
+                this.BeginReadMessage();
             }
             catch(IOException e)
             {
@@ -403,6 +438,7 @@ namespace MailServer.SMTP
             }
             catch(Exception e)
             {
+                this.SendMessage("451 Requested action aborted: local error in processing");
                 this.BeginReadMessage();
             }            
         }
@@ -411,12 +447,17 @@ namespace MailServer.SMTP
         {
             if (this.IsConnected)
             {
-                this.SendMessage(message);
-                this.Client?.Close();
+                try
+                {
+                    this.SendMessage(message);
+                    this.Client?.Close();
+                }
+                catch(IOException e)
+                {
+
+                }
             }
             this.OnDisconnect?.Invoke(this);
-
-            this.Clear();
         }
 
         private void Clear()
@@ -429,7 +470,7 @@ namespace MailServer.SMTP
 
             this.IsAuthenticated = false;
             this.ClientName = null;
-            this.IsEncrypted = false;
+            this.Encryption = SslProtocols.None;
             this._currentMail = null;
 
             this.Stream?.Dispose();

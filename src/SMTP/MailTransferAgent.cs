@@ -14,6 +14,8 @@
 //
 // You should have received a copy of the GNU General Public License along with this program. If not, see<https://www.gnu.org/licenses/>.
 
+// TODO: Max. Verbindungen über Config einstellen
+
 using System;
 using System.Collections.Generic;
 using System.Security.Cryptography.X509Certificates;
@@ -22,6 +24,7 @@ using System.Net.Sockets;
 using MailServer.Common;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Security.Authentication;
 
 namespace MailServer.SMTP {
     class MailTransferAgent : IDisposable {
@@ -29,40 +32,46 @@ namespace MailServer.SMTP {
 
         private readonly List<SmtpClientHandler> _connectedClientList = new List<SmtpClientHandler>();
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+        private readonly TcpListener _listener;
+        private readonly IPEndPoint _endpoint;
+
+        public IPAddress Address { get => this._endpoint.Address; }
+        public Int32 Port { get => this._endpoint.Port; }
+        public SslProtocols SslProtocols { get; private set; }
 
         public Boolean IsListening { get; private set; }
 
-        public MailTransferAgent() 
-        {
-        }
 
-        public Task StartAsync(CancellationToken? cancellationToken = null)
+        public MailTransferAgent(Int32 port, SslProtocols protocols = SslProtocols.None)
         {
-            return Task.Run(() => this.Start(cancellationToken));
-        }
+            this.SslProtocols = protocols;
 
-        private void Start(CancellationToken? cancellationToken = null)
-        {
             IPAddress adr;
             if (!IPAddress.TryParse(Config.Current.Listen, out adr))
                 adr = IPAddress.Any;
 
-            IPEndPoint endPoint = new IPEndPoint(adr, 25);
-            TcpListener listener = new TcpListener(endPoint);
-            listener.AllowNatTraversal(true);
-            listener.Start();
+            this._endpoint = new IPEndPoint(adr, port);
+            this._listener = new TcpListener(this._endpoint);
+
+            this._listener.AllowNatTraversal(true);
+        }
+
+        public async Task StartAsync()
+        {
+            this._listener.Start();
             this.IsListening = true;
 
             Boolean running = true;
-
-            while (running)
+            do
             {
                 this._cts.Token.ThrowIfCancellationRequested();
-                cancellationToken?.ThrowIfCancellationRequested();
-
                 try
                 {
-                    SmtpClientHandler client = new SmtpClientHandler(listener.AcceptTcpClient());
+                    SmtpClientHandler client = new SmtpClientHandler(
+                        await this._listener.AcceptTcpClientAsync(),
+                        false,
+                        this.SslProtocols);
+
                     client.OnDisconnect += ClientDisconnected;
                     this._connectedClientList.Add(client);
                 }
@@ -74,9 +83,14 @@ namespace MailServer.SMTP {
                 {
 
                 }
-            }
+            } while (running);
 
-            listener.Stop();
+        }
+
+        public void Stop()
+        {
+            this._cts.Cancel();
+            this._listener.Stop();
             this.IsListening = false;
         }
 
@@ -85,12 +99,11 @@ namespace MailServer.SMTP {
             Console.WriteLine("Client disconnected!");
             smtp.Dispose();
             this._connectedClientList.Remove(smtp);
-            smtp = null;
         }
 
         public void Dispose()
         {
-            this._cts?.Cancel();
+            this.Stop();
         }
     }
 }
