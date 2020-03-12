@@ -187,25 +187,6 @@ namespace MailServer.SMTP
             mail.Save();
         }
 
-        private IAsyncResult BeginReadMessage()
-        {
-            this._timer.Start();
-            try
-            {
-                lock (this._buffer)
-                    return this.Stream.BeginRead(this._buffer, 0, this._buffer.Length, new AsyncCallback(this.ReceiveMessageCallback), this.Stream);
-            }
-            catch (Exception e)
-            {
-                if (this.IsConnected)
-                {
-                    this.Close($"451 Requested action aborted: local error in processing");
-                }
-            }
-
-            return null;
-        }
-
         protected Boolean VerifyCommand(SmtpMessageType type)//, out String message)
         {
             if (type == SmtpMessageType.QUIT)
@@ -281,56 +262,36 @@ namespace MailServer.SMTP
             this.Stream.Write(this._encoder.GetBytes(message + "\r\n"));
         }
 
-        private void ReceiveMessageCallback(IAsyncResult result)
+        private IAsyncResult BeginReadMessage()
         {
-            this._timer.Stop();
+            this._timer.Start();
             try
             {
-                Int32 readBytes = this.Stream.EndRead(result);
-
-                if (readBytes == 0)
-                {
-                    System.Threading.Thread.Sleep(250);
-                    this.BeginReadMessage();
-                    return;
-                }
-
-                if (readBytes < 2)
-                {
-                    if (this._memoryBuffer == null)
-                        this._memoryBuffer = new MemoryStream();
-                    lock (this._buffer)
-                        this._memoryBuffer.Write(this._buffer, 0, readBytes);
-                    this.BeginReadMessage();
-                    return;
-                }
-
-                Byte[] _buffer = null;
                 lock (this._buffer)
+                    return this.Stream.BeginRead(this._buffer, 0, this._buffer.Length, new AsyncCallback(this.ReceiveMessageCallback), this.Stream);
+            }
+            catch (Exception e)
+            {
+                if (this.IsConnected)
                 {
-                    if (this._memoryBuffer == null)
-                        this._memoryBuffer = new MemoryStream();
-
-                    this._memoryBuffer.Write(this._buffer, 0, readBytes);
-
-                    _buffer = this._memoryBuffer.ToArray();
-                    Int32 seek = _buffer.Length;
-
-                    if (( !this._isData || ( seek > 4 && _buffer[seek - 5] == (byte)'\r' && _buffer[seek - 4] == (byte)'\n'
-                        && _buffer[seek - 3] == (byte)'.' ) )
-                        && _buffer[seek - 2] == (byte)'\r' && _buffer[seek - 1] == (byte)'\n')
-                    {
-                        this._memoryBuffer.Dispose();
-                        this._memoryBuffer = null;
-                    }
-                    else
-                    {
-                        this.BeginReadMessage();
-                        return;
-                    }
+                    this.Close($"451 Requested action aborted: local error in processing");
                 }
+            }
 
-                String message = this._encoder.GetString(_buffer);
+            return null;
+        }
+
+        private void HandleMessage()
+        {
+            Int32 readBytes; 
+            while(( readBytes = this.Stream.Read(this._buffer, 0, this._buffer.Length) ) == 0)
+            {
+                this._timer.Stop();
+
+                if (!this.WriteMemoryBuffer(this._buffer, readBytes))
+                    continue;
+
+                String message = this._encoder.GetString(this._buffer);
                 SmtpMessageType? type = null;
 
                 try
@@ -343,8 +304,7 @@ namespace MailServer.SMTP
                     if (!this._isData)
                     {
                         this.SendMessage("500 Syntax error, command unrecognised");
-                        this.BeginReadMessage();
-                        return;
+                        continue;
                     }
                 }
 
@@ -400,7 +360,7 @@ namespace MailServer.SMTP
                     else if (type == SmtpMessageType.MAIL)
                     {
                         this._currentMail = new ReceivedMessage(GetAddress(message));
-                        if(VerifyCommand(SmtpMessageType.MAIL))
+                        if (VerifyCommand(SmtpMessageType.MAIL))
                             this.SendMessage("250 Requested mail action okay, completed");
                         else
                         {
@@ -431,16 +391,44 @@ namespace MailServer.SMTP
                     }
                 }
                 this.BeginReadMessage();
-            }
-            catch(IOException e)
-            {
 
+                this._timer.Start();
             }
-            catch(Exception e)
+
+            // this.SendMessage("451 Requested action aborted: local error in processing");
+            // this.BeginReadMessage();
+        }
+
+        private Boolean WriteMemoryBuffer(Byte[] buffer, Int32 readBytes)
+        {
+            if (this._memoryBuffer == null)
+                this._memoryBuffer = new MemoryStream();
+
+            this._memoryBuffer.Write(buffer, 0, readBytes);
+
+            Byte[] _buffer = this._memoryBuffer.GetBuffer();
+
+            for(int i = _buffer.Length - 1; i > 1; --i)
             {
-                this.SendMessage("451 Requested action aborted: local error in processing");
-                this.BeginReadMessage();
-            }            
+                if (!this._isData)
+                {
+                    if (_buffer[i - 1] == (byte)'\r' && _buffer[i] == (byte)'\n')
+                        return true;
+
+                }
+                else if(i > 3)
+                { 
+                    if (_buffer[i - 4] == (byte)'\r' && _buffer[i - 3] == (byte)'\n' && _buffer[i - 2] == (byte)'.' && _buffer[i - 1] == (byte)'\r' && _buffer[i] == (byte)'\n')
+                    {
+                        this._memoryBuffer.Dispose();
+                        this._memoryBuffer = null;
+
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         public void Close(String message)
