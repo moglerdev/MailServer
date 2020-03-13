@@ -8,3 +8,6 @@ src/.vscode/
 *.user
 /src/MailServer/bin
 /src/MailServer/obj
+/src/MailServer.Test/*.user
+/src/MailServer.Test/obj
+/src/MailServer.Test/bin
