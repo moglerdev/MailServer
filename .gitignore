@@ -5,3 +5,6 @@ src/obj/
 src/bin/
 src/.vs/
 src/.vscode/
+*.user
+/src/MailServer/bin
+/src/MailServer/obj
