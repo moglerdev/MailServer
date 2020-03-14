@@ -26,6 +26,7 @@ using System.Text;
 using System.Timers;
 using System.Security.Authentication;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 // TODO:
 //  - Add Authentication
@@ -34,19 +35,20 @@ using System.Collections.Generic;
 //  - Add Whitelist
 //  - Handle send commands better
 
-namespace MailServer.SMTP
+namespace MailServer.MTA
 {
     enum SmtpMessageType
     {
-        QUIT = 0,
-        HELO = 1,
-        EHLO = 2,
-        MAIL = 3,
-        RCPT = 4,
-        DATA = 5,
-        STARTTLS = 6,
+        QUIT = 1,
+        HELO = 2,
+        EHLO = 3,
+        MAIL = 4,
+        RCPT = 5,
+        DATA = 6,
         RSET = 7,
         AUTH = 8,
+        NOOP = 9,
+        STARTTLS,
     }
 
     delegate void MailArrived(ReceivedMessage mail);
@@ -61,28 +63,31 @@ namespace MailServer.SMTP
         {
             try
             {
-                if (message.Trim() == "STARTTLS")
+                if (message.Length > 7 && message.Substring(0, 8) == "STARTTLS")
                 {
                     return SmtpMessageType.STARTTLS;
                 }
 
-                String prefix = message.Substring(0, 4);
-                if (prefix == "QUIT")
-                    return SmtpMessageType.QUIT;
-                else if (prefix == "AUTH")
-                    return SmtpMessageType.AUTH;
-                else if (prefix == "HELO")
-                    return SmtpMessageType.HELO;
-                else if (prefix == "EHLO")
-                    return SmtpMessageType.EHLO;
-                else if (prefix == "MAIL")
-                    return SmtpMessageType.MAIL;
-                else if (prefix == "RCPT")
-                    return SmtpMessageType.RCPT;
-                else if (prefix == "DATA")
-                    return SmtpMessageType.DATA;
-                else if (prefix == "RSET")
-                    return SmtpMessageType.RSET;
+                if(message.Length > 3)
+                {
+                    String prefix = message.Substring(0, 4);
+                    if (prefix == "QUIT")
+                        return SmtpMessageType.QUIT;
+                    else if (prefix == "AUTH")
+                        return SmtpMessageType.AUTH;
+                    else if (prefix == "HELO")
+                        return SmtpMessageType.HELO;
+                    else if (prefix == "EHLO")
+                        return SmtpMessageType.EHLO;
+                    else if (prefix == "MAIL")
+                        return SmtpMessageType.MAIL;
+                    else if (prefix == "RCPT")
+                        return SmtpMessageType.RCPT;
+                    else if (prefix == "DATA")
+                        return SmtpMessageType.DATA;
+                    else if (prefix == "RSET")
+                        return SmtpMessageType.RSET;
+                }
             }
             catch (Exception e) { }
             throw new NotSupportedException("Received message not supported!");
@@ -136,10 +141,6 @@ namespace MailServer.SMTP
 
         #region Instance
         private Encoding _encoder = Encoding.UTF8;
-        private Boolean _isData = false;
-        private Byte[] _buffer = new byte[bufferSize];
-        private ReceivedMessage _currentMail;
-        private MemoryStream _memoryBuffer = null;
         #endregion
 
         #region Constructor
@@ -164,14 +165,20 @@ namespace MailServer.SMTP
             var lookup = new DnsClient.LookupClient();
             var query  = lookup.QueryReverse(this.ClientAddress);
             this.ClientDomain = query.Answers.PtrRecords().FirstOrDefault()?.PtrDomainName;
-
-            this.SendMessage($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
-
-            this.BeginReadMessage();
         }
         #endregion
 
         #region Methods
+        public async Task StartAsync()
+        {
+            await Task.Run(() =>
+            {
+                this.SendMessage($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
+
+                this.ReceivingData();
+            });
+        }
+
         protected virtual void CheckConnection(object sender, EventArgs eventArgs)
         {
             this._timer.Stop();
@@ -185,25 +192,6 @@ namespace MailServer.SMTP
         protected virtual void MailArrived(ReceivedMessage mail)
         {
             mail.Save();
-        }
-
-        private IAsyncResult BeginReadMessage()
-        {
-            this._timer.Start();
-            try
-            {
-                lock (this._buffer)
-                    return this.Stream.BeginRead(this._buffer, 0, this._buffer.Length, new AsyncCallback(this.ReceiveMessageCallback), this.Stream);
-            }
-            catch (Exception e)
-            {
-                if (this.IsConnected)
-                {
-                    this.Close($"451 Requested action aborted: local error in processing");
-                }
-            }
-
-            return null;
         }
 
         protected Boolean VerifyCommand(SmtpMessageType type)//, out String message)
@@ -228,16 +216,16 @@ namespace MailServer.SMTP
                 {
                     if (this.IsAuthenticated)
                     {
-                        return true; // TODO: Test SPF-DSN and MX-Record and check when E-Mail is outgo, is the User authenticated
+                        return true; // TODO: is the User authenticated
                     }
-                    return DnsHelper.CheckSpf(this._currentMail.Sender.Address, this.ClientAddress);
+                    return DnsHelper.CheckSpf(this.msg.Sender.Address, this.ClientAddress);
                 }
 
                 if (type == SmtpMessageType.RCPT)
-                    return this._currentMail != null;
+                    return this.msg != null;
 
                 if (type == SmtpMessageType.DATA)
-                    return this._currentMail != null && this._currentMail.Receivers.Any();
+                    return this.msg != null && this.msg.Receivers.Any();
 
                 if (type == SmtpMessageType.RSET)
                     return true;
@@ -281,166 +269,156 @@ namespace MailServer.SMTP
             this.Stream.Write(this._encoder.GetBytes(message + "\r\n"));
         }
 
-        private void ReceiveMessageCallback(IAsyncResult result)
+
+        ReceivedMessage msg = null;
+
+        private void ReceivingData()
         {
-            this._timer.Stop();
-            try
+            Int32 readData, testedLength = 0;
+            Boolean isData = false;
+            Byte[] buffer = new byte[bufferSize];
+            MemoryStream ms = new MemoryStream();
+            while (( readData = this.Stream.Read(buffer, 0, buffer.Length)) > 0)
             {
-                Int32 readBytes = this.Stream.EndRead(result);
-
-                if (readBytes == 0)
-                {
-                    System.Threading.Thread.Sleep(250);
-                    this.BeginReadMessage();
-                    return;
-                }
-
-                if (readBytes < 2)
-                {
-                    if (this._memoryBuffer == null)
-                        this._memoryBuffer = new MemoryStream();
-                    lock (this._buffer)
-                        this._memoryBuffer.Write(this._buffer, 0, readBytes);
-                    this.BeginReadMessage();
-                    return;
-                }
-
-                Byte[] _buffer = null;
-                lock (this._buffer)
-                {
-                    if (this._memoryBuffer == null)
-                        this._memoryBuffer = new MemoryStream();
-
-                    this._memoryBuffer.Write(this._buffer, 0, readBytes);
-
-                    _buffer = this._memoryBuffer.ToArray();
-                    Int32 seek = _buffer.Length;
-
-                    if (( !this._isData || ( seek > 4 && _buffer[seek - 5] == (byte)'\r' && _buffer[seek - 4] == (byte)'\n'
-                        && _buffer[seek - 3] == (byte)'.' ) )
-                        && _buffer[seek - 2] == (byte)'\r' && _buffer[seek - 1] == (byte)'\n')
-                    {
-                        this._memoryBuffer.Dispose();
-                        this._memoryBuffer = null;
-                    }
-                    else
-                    {
-                        this.BeginReadMessage();
-                        return;
-                    }
-                }
-
-                String message = this._encoder.GetString(_buffer);
-                SmtpMessageType? type = null;
-
                 try
                 {
-                    type = GetMessageType(message);
-                    Console.WriteLine("<Client>:" + message);
+                    this._timer.Stop();
+                    ms.Write(buffer, 0, readData);
+                    // TODO Max Buffer Size
+                    byte[] msBuffer = ms.GetBuffer();
+                    for (int i = testedLength; i < msBuffer.Length; ++i)
+                    {
+                        if (i + 1 < msBuffer.Length && msBuffer[i+1] == (byte)'\0')
+                            break;
+                        if (isData && i + 4 < msBuffer.Length)
+                        {
+                            if (msBuffer[i] == (byte)'\r' && msBuffer[i+1] == (byte)'\n' &&
+                                msBuffer[i+2] == (byte)'.' &&
+                                msBuffer[i+3] == (byte)'\r' && msBuffer[i+4] == (byte)'\n')
+                            {
+                                using (MemoryStream mimeMs = new MemoryStream(ms.ToArray()))
+                                    msg.MimeMessage = MimeMessage.Load(mimeMs); // TODO: <CLRF>.<CLRF> wird in die Mime mit geschrieben
+
+                                this.OnMailArrived?.Invoke(msg);
+
+                                this.SendMessage("250 Requested mail action okay, completed");
+
+                                Console.WriteLine("<Client>: {MIME MESSAGE}");
+
+                                ms.Dispose();
+                                ms = null;
+
+                                isData = false;
+                            }
+                        }
+                        else if (i + 2 < msBuffer.Length)
+                        {
+                            if (msBuffer[i] == (byte)'\r' && msBuffer[i+1] == (byte)'\n')
+                            {
+                                String message = this._encoder.GetString(ms.ToArray());
+
+                                switch (HandleCommand(message))
+                                {
+                                    case SmtpMessageType.DATA: isData = true; break;
+                                    case SmtpMessageType.RSET: isData = false; break;
+                                    case SmtpMessageType.QUIT: return;
+                                }
+
+                                ms.Dispose();
+                                ms = null;
+                            }
+                        }
+
+                        if (ms == null)
+                        {
+                            ms = new MemoryStream();
+                            testedLength = 0;
+                        }
+                        else
+                            testedLength = i;
+                    }
                 }
                 catch (Exception e)
                 {
-                    if (!this._isData)
-                    {
-                        this.SendMessage("500 Syntax error, command unrecognised");
-                        this.BeginReadMessage();
-                        return;
-                    }
+                    this.Close("451 Requested action aborted: local error in processing");
                 }
+                this._timer.Start();
+            }
+            this._timer.Stop();
 
-                if (type == SmtpMessageType.RSET)
+            ms?.Dispose();
+        }
+
+        private SmtpMessageType HandleCommand(String message)
+        {
+            SmtpMessageType? type = null;
+
+            try
+            {
+                type = GetMessageType(message);
+                Console.WriteLine("<Client>:" + message);
+            }
+            catch (Exception e)
+            {
+                this.SendMessage("500 Syntax error, command unrecognised");
+            }
+
+            if (type == SmtpMessageType.QUIT)
+            {
+                this.Close($"221 {Config.Current.Domain} Service closing transmission channel");
+                return SmtpMessageType.QUIT;
+            }
+            else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
+            {
+                this.ClientName = message.Substring(4, message.Length - 4).Trim();
+                this.SendMessage($"250-{Config.Current.Domain} Hello [{this.ClientAddress.ToString()}]");
+
+                if (type == SmtpMessageType.EHLO)
+                    this.SendExentsions();
+            }
+            else if (type == SmtpMessageType.STARTTLS)
+            {
+                if (this.VerifyCommand(SmtpMessageType.STARTTLS))
                 {
-                    this._isData = false;
-                    this._memoryBuffer?.Dispose();
-                    this._memoryBuffer = null;
-
-                    this._currentMail = null;
-
-                    this.SendMessage("250 Requested mail action okay, completed");
-                    this.BeginReadMessage();
-                    return;
+                    this.SendMessage("220 SMTP server ready");
+                    this.InitEncryptedStream();
                 }
 
-
-                if (this._isData)
-                {
-                    using (MemoryStream ms = new MemoryStream(_buffer))
-                        this._currentMail.MimeMessage = MimeMessage.Load(ms);
-
-                    Console.WriteLine("<Client>: {MIME MESSAGE}");
-
-                    this.OnMailArrived?.Invoke(this._currentMail);
+            }
+            else if (type == SmtpMessageType.MAIL)
+            {
+                msg = new ReceivedMessage(GetAddress(message));
+                if (VerifyCommand(SmtpMessageType.MAIL))
                     this.SendMessage("250 Requested mail action okay, completed");
-                    this._isData = false;
-                }
                 else
                 {
-                    if (type == SmtpMessageType.QUIT)
-                    {
-                        this.Close($"221 {Config.Current.Domain} Service closing transmission channel");
-                        return;
-                    }
-                    else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
-                    {
-                        this.ClientName = message.Substring(4, message.Length - 4).Trim();
-                        this.SendMessage($"250-{Config.Current.Domain} Hello [{this.ClientAddress.ToString()}]");
-
-                        if (type == SmtpMessageType.EHLO)
-                            this.SendExentsions();
-                    }
-                    else if (type == SmtpMessageType.STARTTLS)
-                    {
-                        if (this.VerifyCommand(SmtpMessageType.STARTTLS))
-                        {
-                            this.SendMessage("220 SMTP server ready");
-                            this.InitEncryptedStream();
-                        }
-
-                    }
-                    else if (type == SmtpMessageType.MAIL)
-                    {
-                        this._currentMail = new ReceivedMessage(GetAddress(message));
-                        if(VerifyCommand(SmtpMessageType.MAIL))
-                            this.SendMessage("250 Requested mail action okay, completed");
-                        else
-                        {
-                            this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
-                            return;
-                        }
-                    }
-                    else if (type == SmtpMessageType.RCPT)
-                    {
-                        MailboxAddress recv = GetAddress(message);
-                        if (ExistMailbox(recv))
-                        {
-                            this._currentMail.Receivers.Add(recv);
-                            this.SendMessage("250 Requested mail action okay, completed");
-                        }
-                        else
-                            this.SendMessage("550 Requested action not taken: mailbox unavailable");
-                    }
-                    else if (type == SmtpMessageType.DATA)
-                    {
-                        this._isData = true;
-                        this.SendMessage("354 Start mail input; end with <CRLF>.<CRLF>");
-                    }
-                    else
-                    {
-                        this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
-                        return;
-                    }
+                    this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
+                    return SmtpMessageType.QUIT;
                 }
-                this.BeginReadMessage();
             }
-            catch(IOException e)
+            else if (type == SmtpMessageType.RCPT)
             {
+                MailboxAddress recv = GetAddress(message);
+                if (ExistMailbox(recv))
+                {
+                    msg.Receivers.Add(recv);
+                    this.SendMessage("250 Requested mail action okay, completed");
+                }
+                else
+                    this.SendMessage("550 Requested action not taken: mailbox unavailable");
+            }
+            else if (type == SmtpMessageType.DATA)
+            {
+                this.SendMessage("354 Start mail input; end with <CRLF>.<CRLF>");
+                return SmtpMessageType.DATA;
+            }
+            else
+            {
+                this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
+                return SmtpMessageType.QUIT;
+            }
 
-            }
-            catch(Exception e)
-            {
-                this.SendMessage("451 Requested action aborted: local error in processing");
-                this.BeginReadMessage();
-            }            
+            return type ?? SmtpMessageType.QUIT;
         }
 
         public void Close(String message)
@@ -471,15 +449,11 @@ namespace MailServer.SMTP
             this.IsAuthenticated = false;
             this.ClientName = null;
             this.Encryption = SslProtocols.None;
-            this._currentMail = null;
 
             this.Stream?.Dispose();
 
             this.Client?.Dispose();
             this.Client = null;
-            this._memoryBuffer?.Dispose();
-            this._memoryBuffer = null;
-            this._buffer = null;
         }
 
         public void Dispose()

@@ -92,7 +92,7 @@ namespace MailServer.Common {
 
                     if (hasPrefix)
                         val[0] = val[0].Substring(1);
-
+                    // TODO: Redirect
                     switch (val[0].ToLower())
                     {
                         case "ip4":
