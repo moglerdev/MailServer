@@ -26,7 +26,7 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Security.Authentication;
 
-namespace MailServer.SMTP {
+namespace MailServer.MTA {
     class MailTransferAgent : IDisposable {
         public static X509Certificate Certificate { get; set; }
 
@@ -73,7 +73,9 @@ namespace MailServer.SMTP {
                         this.SslProtocols);
 
                     client.OnDisconnect += ClientDisconnected;
-                    client.StartAsync();
+#pragma warning disable CS4014 // Da auf diesen Aufruf nicht gewartet wird, wird die Ausführung der aktuellen Methode vor Abschluss des Aufrufs fortgesetzt.
+                    client.StartAsync().ContinueWith(t => Console.WriteLine(t), TaskContinuationOptions.OnlyOnFaulted);
+#pragma warning restore CS4014 // Da auf diesen Aufruf nicht gewartet wird, wird die Ausführung der aktuellen Methode vor Abschluss des Aufrufs fortgesetzt.
                     this._connectedClientList.Add(client);
                 }
                 catch (OperationCanceledException e)

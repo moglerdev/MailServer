@@ -20,8 +20,7 @@ using System.Collections.Generic;
 using System.IO;
 
 
-namespace MailServer.SMTP
-{
+namespace MailServer.MTA {
     class ReceivedMessage
     {
         public MailboxAddress Sender { get; set; }

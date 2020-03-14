@@ -35,19 +35,20 @@ using System.Threading.Tasks;
 //  - Add Whitelist
 //  - Handle send commands better
 
-namespace MailServer.SMTP
+namespace MailServer.MTA
 {
     enum SmtpMessageType
     {
-        QUIT = 0,
-        HELO = 1,
-        EHLO = 2,
-        MAIL = 3,
-        RCPT = 4,
-        DATA = 5,
-        STARTTLS = 6,
+        QUIT = 1,
+        HELO = 2,
+        EHLO = 3,
+        MAIL = 4,
+        RCPT = 5,
+        DATA = 6,
         RSET = 7,
         AUTH = 8,
+        NOOP = 9,
+        STARTTLS,
     }
 
     delegate void MailArrived(ReceivedMessage mail);
@@ -215,7 +216,7 @@ namespace MailServer.SMTP
                 {
                     if (this.IsAuthenticated)
                     {
-                        return true; // TODO: Test SPF-DSN and MX-Record and check when E-Mail is outgo, is the User authenticated
+                        return true; // TODO: is the User authenticated
                     }
                     return DnsHelper.CheckSpf(this.msg.Sender.Address, this.ClientAddress);
                 }
@@ -277,68 +278,70 @@ namespace MailServer.SMTP
             Boolean isData = false;
             Byte[] buffer = new byte[bufferSize];
             MemoryStream ms = new MemoryStream();
-
-            while ((readData = this.Stream.Read(buffer, 0, buffer.Length) ) > 0)
+            while (( readData = this.Stream.Read(buffer, 0, buffer.Length)) > 0)
             {
-                this._timer.Stop();
-                ms.Write(buffer, 0, readData);
-                // TODO Max Buffer Size
-                byte[] msBuffer = ms.GetBuffer();
-                for(int i = (testedLength < 3 ? 0 : testedLength - (isData ? 4 : 1)); i < msBuffer.Length; ++i)
+                try
                 {
-                    if (msBuffer[i] == (byte)'\0')
-                        break;
-                    if (isData && i > 4)
+                    this._timer.Stop();
+                    ms.Write(buffer, 0, readData);
+                    // TODO Max Buffer Size
+                    byte[] msBuffer = ms.GetBuffer();
+                    for (int i = testedLength; i < msBuffer.Length; ++i)
                     {
-                        if (msBuffer[i - 4] == (byte)'\r' && msBuffer[i - 3] == (byte)'\n' &&
-                            msBuffer[i - 2] == (byte)'.' &&
-                            msBuffer[i - 1] == (byte)'\r' && msBuffer[i] == (byte)'\n')
+                        if (i + 1 < msBuffer.Length && msBuffer[i+1] == (byte)'\0')
+                            break;
+                        if (isData && i + 4 < msBuffer.Length)
                         {
-                            using (MemoryStream mimeMs = new MemoryStream(ms.ToArray()))
-                                msg.MimeMessage = MimeMessage.Load(mimeMs);
-
-                            this.OnMailArrived?.Invoke(msg);
-
-                            this.SendMessage("250 Requested mail action okay, completed");
-
-                            Console.WriteLine("<Client>: {MIME MESSAGE}");
-
-                            ms.Dispose();
-                            ms = null;
-                            
-                            isData = false;
-                        }
-                    }
-                    else if(i > 1)
-                    {
-                        if (msBuffer[i - 1] == (byte)'\r' && msBuffer[i] == (byte)'\n')
-                        {
-                            String message = this._encoder.GetString(ms.ToArray());
-
-                            switch(HandleCommand(message))
+                            if (msBuffer[i] == (byte)'\r' && msBuffer[i+1] == (byte)'\n' &&
+                                msBuffer[i+2] == (byte)'.' &&
+                                msBuffer[i+3] == (byte)'\r' && msBuffer[i+4] == (byte)'\n')
                             {
-                                case SmtpMessageType.DATA: isData = true; break;
-                                case SmtpMessageType.RSET: isData = false; break;
-                                case SmtpMessageType.QUIT: return;
+                                using (MemoryStream mimeMs = new MemoryStream(ms.ToArray()))
+                                    msg.MimeMessage = MimeMessage.Load(mimeMs); // TODO: <CLRF>.<CLRF> wird in die Mime mit geschrieben
+
+                                this.OnMailArrived?.Invoke(msg);
+
+                                this.SendMessage("250 Requested mail action okay, completed");
+
+                                Console.WriteLine("<Client>: {MIME MESSAGE}");
+
+                                ms.Dispose();
+                                ms = null;
+
+                                isData = false;
                             }
-
-                            ms.Dispose();
-                            ms = null;
                         }
-                    }
+                        else if (i + 2 < msBuffer.Length)
+                        {
+                            if (msBuffer[i] == (byte)'\r' && msBuffer[i+1] == (byte)'\n')
+                            {
+                                String message = this._encoder.GetString(ms.ToArray());
 
-                    if (ms == null)
-                    {
-                        ms = new MemoryStream();
-                        testedLength = 0;
+                                switch (HandleCommand(message))
+                                {
+                                    case SmtpMessageType.DATA: isData = true; break;
+                                    case SmtpMessageType.RSET: isData = false; break;
+                                    case SmtpMessageType.QUIT: return;
+                                }
+
+                                ms.Dispose();
+                                ms = null;
+                            }
+                        }
+
+                        if (ms == null)
+                        {
+                            ms = new MemoryStream();
+                            testedLength = 0;
+                        }
+                        else
+                            testedLength = i;
                     }
-                    else
-                        testedLength = i;
                 }
-
-                // this.SendMessage("451 Requested action aborted: local error in processing");
-                // this.BeginReadMessage();
-
+                catch (Exception e)
+                {
+                    this.Close("451 Requested action aborted: local error in processing");
+                }
                 this._timer.Start();
             }
             this._timer.Stop();
