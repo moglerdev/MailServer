@@ -25,5 +25,7 @@
     "test@dotbehindyou.de",
     "info@dotbehindyou.de"
   ],
-  "listen": "0.0.0.0"
+  "listen": "0.0.0.0",
+  "path": "log",
+  "isDebug":  true
 }

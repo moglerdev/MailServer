@@ -14,15 +14,10 @@
 //
 // You should have received a copy of the GNU General Public License along with this program.If not, see<https://www.gnu.org/licenses/>.
 
-using DnsClient;
-using MailKit.Net.Smtp;
 using MailServer.Common;
 using MailServer.MTA;
-using MimeKit;
 using System;
 using System.IO;
-using System.Linq;
-using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading.Tasks;
 
@@ -43,56 +38,20 @@ namespace MailServer {
             MailTransferAgent.Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
 
             MailTransferAgent mta = new MailTransferAgent(25);
-            Task mtaTask = mta.StartAsync();
 
             try
             {
-                TestAsync().Wait();
-                Console.WriteLine("Test success");
+                Task mtaTask = mta.StartAsync();
+
+                Log.WriteLine(LogType.Info, "Program", "Main", "MailTransferAgent-Service has been successfully started.");
 
                 mtaTask.Wait();
             }
             catch(Exception e)
             {
                 mta.Stop();
-                Console.WriteLine("Test failed! Service stopped!");
+                Log.WriteLine(LogType.Info, "Program", "Main", "MailTransferAgent-Service failed to start!");
             }
-        }
-
-        static async Task TestAsync()
-        {
-            try
-            {
-                using (SmtpClient _client = new SmtpClient())
-                {
-                    _client.ServerCertificateValidationCallback = (s, c, a, l) => true;
-
-                    _client.ClientCertificates = new X509CertificateCollection();
-                    _client.ClientCertificates.Add(MailTransferAgent.Certificate);
-
-                    _client.Connect("localhost", 25, MailKit.Security.SecureSocketOptions.Auto);
-
-                    MimeMessage msg = new MimeMessage();
-                    msg.From.Add(new MailboxAddress("test", "test@test.de"));
-                    msg.To.Add(new MailboxAddress("Test-Email", Config.Current.Accounts[0]));
-                    msg.Subject = "Test";
-
-                    BodyBuilder bb = new BodyBuilder();
-                    bb.HtmlBody = "<h2>Hello World</h2>";
-
-                    msg.Body = bb.ToMessageBody();
-
-                    await _client.SendAsync(msg);
-
-                    await _client.DisconnectAsync(true);
-                }
-            }
-            catch(Exception e)
-            {
-                Console.WriteLine(e);
-                throw e;
-            }
-            //throw new Exception();
         }
     }
 }

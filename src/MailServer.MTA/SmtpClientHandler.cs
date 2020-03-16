@@ -38,7 +38,7 @@ using MailServer.Interface;
 
 namespace MailServer.MTA
 {
-    enum SmtpMessageType
+    public enum SmtpMessageType
     {
         QUIT = 1,
         HELO = 2,

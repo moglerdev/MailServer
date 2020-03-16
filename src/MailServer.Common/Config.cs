@@ -25,6 +25,8 @@ namespace MailServer.Common {
         public String Listen { get; set; }
         public CertificateConfig Certificate { get; set; }
         public List<String> Accounts { get; set; }
+        public String LogPath { get; set; }
+        public Boolean IsDebug { get; set; }
 
         public class CertificateConfig
         {
