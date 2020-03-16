@@ -16,6 +16,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 
 namespace MailServer.Common {
@@ -30,6 +31,7 @@ namespace MailServer.Common {
 
         public class CertificateConfig
         {
+            public X509Certificate Certificate { get; set; }
             public String Filename { get; set; }
             public String Password { get; set; }
         }

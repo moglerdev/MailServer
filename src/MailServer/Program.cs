@@ -35,7 +35,7 @@ namespace MailServer {
         static void Main(string[] args)
         {
             Config.Current = Newtonsoft.Json.JsonConvert.DeserializeObject<Config>(File.ReadAllText("Config.json"));
-            MailTransferAgent.Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
+            Config.Current.Certificate.Certificate = new X509Certificate2(Config.Current.Certificate.Filename, Config.Current.Certificate.Password, X509KeyStorageFlags.MachineKeySet);
 
             MailTransferAgent mta = new MailTransferAgent(25);
 

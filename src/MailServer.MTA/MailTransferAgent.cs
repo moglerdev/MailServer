@@ -25,11 +25,11 @@ using System.Threading.Tasks;
 using System.Threading;
 using System.Security.Authentication;
 using MailServer.Common;
+using MailServer.Interface;
+using MailServer.Common.Base;
 
 namespace MailServer.MTA {
     public class MailTransferAgent : IDisposable {
-        public static X509Certificate Certificate { get; set; }
-
         private readonly List<SmtpClientHandler> _connectedClientList = new List<SmtpClientHandler>();
         private readonly CancellationTokenSource _cts = new CancellationTokenSource();
         private readonly TcpListener _listener;
@@ -97,8 +97,9 @@ namespace MailServer.MTA {
             this.IsListening = false;
         }
 
-        protected void ClientDisconnected(SmtpClientHandler smtp)
+        protected void ClientDisconnected(IClientHandler sender)
         {
+            SmtpClientHandler smtp = sender as SmtpClientHandler; 
             Log.WriteLine(LogType.Debug, "MailTransferAgent", "ClientDisconnected", "<Client>: {Client disconnected!}");
             smtp.Dispose();
             this._connectedClientList.Remove(smtp);

@@ -28,6 +28,7 @@ using System.Security.Authentication;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MailServer.Interface;
+using MailServer.Common.Base;
 
 // TODO:
 //  - Add Authentication
@@ -54,13 +55,8 @@ namespace MailServer.MTA
     }
 
     public delegate void MailArrived(ReceivedMessage mail);
-    public delegate void ClientDisconnect(SmtpClientHandler client);
 
-    public class SmtpClientHandler : IClientHandler, IDisposable
-    {
-        #region Static
-        const int bufferSize = 4069;
-
+    public class SmtpClientHandler : ClientHandlerBase, IDisposable {
         private static SmtpMessageType GetMessageType(String message)
         {
             try
@@ -70,7 +66,7 @@ namespace MailServer.MTA
                     return SmtpMessageType.STARTTLS;
                 }
 
-                if(message.Length > 3)
+                if (message.Length > 3)
                 {
                     String prefix = message.Substring(0, 4);
                     if (prefix == "QUIT")
@@ -94,7 +90,6 @@ namespace MailServer.MTA
             catch (Exception e) { }
             throw new NotSupportedException("Received message not supported!");
         }
-
         public static MailboxAddress GetAddress(String message)
         {
             String name = null;
@@ -113,84 +108,31 @@ namespace MailServer.MTA
 
             return new MailboxAddress(name, mail);
         }
-
         public static Boolean ExistMailbox(MailboxAddress address) => Config.Current.Accounts.Any(x => x == address.Address);
 
-        #endregion
 
-        #region Properties
-        public TcpClient Client { get; private set; }
-        public Stream Stream { get; private set; }
-        public Boolean IsConnected { get => this.Client != null && this.Client.Connected; }
+        public event MailArrived OnMailArrived;
+
         public String ClientName { get; private set; }
         public String ClientDomain { get; private set; }
-        public IPAddress ClientAddress { get => (this._clientSocket?.RemoteEndPoint as IPEndPoint).Address; }
-        public Boolean IsAuthenticated { get; private set; }
-        public SslProtocols SslProtocol { get; private set; } = SslProtocols.None;
-        #endregion
-
-        #region Events
-        public event MailArrived OnMailArrived;
-        public event ClientDisconnect OnDisconnect;
-        #endregion
-
-        #region Readonly
-        private readonly Socket _clientSocket;
-        private readonly Timer _timer = new Timer(30000);
 
         public readonly Boolean IsDeliverService;
-        #endregion
 
-        #region Instance
-        private Encoding _encoder = Encoding.UTF8;
-        #endregion
-
-        #region Constructor
-        public SmtpClientHandler(TcpClient client, Boolean isDeliverService = false, SslProtocols encryption = SslProtocols.None)
+        public SmtpClientHandler(TcpClient client, Boolean isDeliverService = false, SslProtocols sslProtocols = SslProtocols.None)
+            : base(client, sslProtocols)
         {
             this.IsDeliverService = isDeliverService;
 
-            this.Client = client;
-            this._clientSocket = client.Client;
-
-            if(encryption != SslProtocols.None)
-            {
-                this.InitEncryptedStream(encryption);
-            }
-            this.Stream = client.GetStream();
-
             this.OnMailArrived += this.MailArrived;
-
-            this._timer.Elapsed += this.CheckConnection;
-            this._timer.AutoReset = false;
 
             var lookup = new DnsClient.LookupClient();
             var query  = lookup.QueryReverse(this.ClientAddress);
             this.ClientDomain = query.Answers.PtrRecords().FirstOrDefault()?.PtrDomainName;
         }
-        #endregion
 
-        #region Methods
-
-        public void Start()
+        public override void SendWelcomeMessage()
         {
-            this.SendMessage($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
-            this.ReceivingData();
-        }
-
-        public async Task StartAsync()
-        {
-            await Task.Run(this.Start);
-        }
-
-        protected virtual void CheckConnection(object sender, EventArgs eventArgs)
-        {
-            this._timer.Stop();
-
-            if (this.IsConnected)
-                this.Close($"451 Timeout waiting for client input [{Config.Current.Domain}]");
-            else
-                this.OnDisconnect?.Invoke(this);
+            this.Send($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
         }
 
         protected virtual void MailArrived(ReceivedMessage mail)
@@ -202,7 +144,7 @@ namespace MailServer.MTA
         {
             if (type == SmtpMessageType.QUIT)
                 return true;
-           
+
             if (String.IsNullOrEmpty(this.ClientName))
             {
                 if (type == SmtpMessageType.EHLO || type == SmtpMessageType.HELO)
@@ -238,14 +180,6 @@ namespace MailServer.MTA
             return false;
         }
 
-        protected virtual void InitEncryptedStream(SslProtocols protocols = SslProtocols.Tls12 | SslProtocols.Tls13)
-        {
-            SslStream encryptedStream = new SslStream(this.Client.GetStream(), false, new RemoteCertificateValidationCallback((sender, cert, chain, ssl) => true));
-            encryptedStream.AuthenticateAsServer(MailTransferAgent.Certificate, false, protocols, false); // TODO: Über Config die erlaubten Verschlüsselungen einstellen
-            this.SslProtocol = encryptedStream.SslProtocol;
-            this.Stream = encryptedStream;
-        }
-
         protected Boolean VerifySender(String mail)
         {
 
@@ -258,53 +192,23 @@ namespace MailServer.MTA
             // 50 AUTH CRAM-MD5 LOGIN PLAIN
             // Send Exentsions
             exentsions.Add("STARTTLS");
-            if(this.IsDeliverService)
+            if (this.IsDeliverService)
                 exentsions.Add("AUTH LOGIN PLAIN");
 
-            for(int i = 0; i < exentsions.Count; ++i)
+            for (int i = 0; i < exentsions.Count; ++i)
             {
-                this.SendMessage($"250{(exentsions.Count - 1 < i ? "-" : " " )}"+ exentsions[i]);
+                this.Send($"250{( exentsions.Count - 1 < i ? "-" : " " )}" + exentsions[i]);
             }
         }
-
-        private void SendMessage(String message)
-        {
-            Log.WriteLine(LogType.Debug, "SmtpClientHanlder", "SendMessage", "<Server>:{0}", message);
-            this.Stream.Write(this._encoder.GetBytes(message + "\r\n"));
-        }
-
 
         ReceivedMessage msg = null;
-
-        private Int32 Read(Byte[] buffer, Int32 offset, Int32 length)
-        {
-            this._timer.Start();
-            try
-            {
-                return this.Stream.Read(buffer, offset, length);
-            }
-            catch(ObjectDisposedException e)
-            {
-                Log.WriteLine(LogType.Debug, "SmtpClientHandler", "Read", e.ToString());
-            }
-            catch(Exception e)
-            {
-
-            }
-            finally
-            {
-                this._timer.Stop();
-            }
-            return 0;
-        }
-
-        private void ReceivingData()
+        protected override void ListenForData()
         {
             Int32 readData, testedLength = 0;
             Boolean isData = false;
-            Byte[] buffer = new byte[bufferSize];
+            Byte[] buffer = new byte[BufferSize];
             MemoryStream ms = new MemoryStream();
-            while ((readData = this.Read(buffer, 0, buffer.Length)) > 0)
+            while (( readData = this.Read(buffer, 0, buffer.Length) ) > 0)
             {
                 try
                 {
@@ -313,20 +217,18 @@ namespace MailServer.MTA
                     byte[] msBuffer = ms.GetBuffer();
                     for (int i = testedLength; i < msBuffer.Length; ++i)
                     {
-                        if (i + 1 < msBuffer.Length && msBuffer[i+1] == (byte)'\0')
+                        if (i + 1 < msBuffer.Length && msBuffer[i + 1] == (byte)'\0')
                             break;
                         if (isData && i + 4 < msBuffer.Length)
                         {
-                            if (msBuffer[i] == (byte)'\r' && msBuffer[i+1] == (byte)'\n' &&
-                                msBuffer[i+2] == (byte)'.' &&
-                                msBuffer[i+3] == (byte)'\r' && msBuffer[i+4] == (byte)'\n')
+                            if (this.IsEndOfData(buffer, i))
                             {
                                 using (MemoryStream mimeMs = new MemoryStream(ms.ToArray()))
                                     msg.MimeMessage = MimeMessage.Load(mimeMs); // TODO: <CLRF>.<CLRF> wird in die Mime mit geschrieben
 
                                 this.OnMailArrived?.Invoke(msg);
 
-                                this.SendMessage("250 Requested mail action okay, completed");
+                                this.Send("250 Requested mail action okay, completed");
 
                                 Log.WriteLine(LogType.Debug, "SmtpClientHandler", "ReceivingData", "<{0}>: {MIME MESSAGE}", this.ClientAddress.ToString());
 
@@ -338,9 +240,9 @@ namespace MailServer.MTA
                         }
                         else if (i + 2 < msBuffer.Length)
                         {
-                            if (msBuffer[i] == (byte)'\r' && msBuffer[i+1] == (byte)'\n')
+                            if (this.IsEndOfLine(buffer, i))
                             {
-                                String message = this._encoder.GetString(ms.ToArray());
+                                String message = this.Encoding.GetString(ms.ToArray());
 
                                 switch (HandleCommand(message))
                                 {
@@ -369,8 +271,9 @@ namespace MailServer.MTA
                 }
             }
             ms?.Dispose();
-            this.OnDisconnect?.Invoke(this);
+            this.Disconnected();
         }
+
 
         private SmtpMessageType HandleCommand(String message)
         {
@@ -394,7 +297,7 @@ namespace MailServer.MTA
             else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
             {
                 this.ClientName = message.Substring(4, message.Length - 4).Trim();
-                this.SendMessage($"250-{Config.Current.Domain} Hello [{this.ClientAddress.ToString()}]");
+                this.Send($"250-{Config.Current.Domain} Hello [{this.ClientAddress.ToString()}]");
 
                 if (type == SmtpMessageType.EHLO)
                     this.SendExentsions();
@@ -403,7 +306,7 @@ namespace MailServer.MTA
             {
                 if (this.VerifyCommand(SmtpMessageType.STARTTLS))
                 {
-                    this.SendMessage("220 SMTP server ready");
+                    this.Send("220 SMTP server ready");
                     this.InitEncryptedStream();
                 }
 
@@ -412,7 +315,7 @@ namespace MailServer.MTA
             {
                 msg = new ReceivedMessage(GetAddress(message));
                 if (VerifyCommand(SmtpMessageType.MAIL))
-                    this.SendMessage("250 Requested mail action okay, completed");
+                    this.Send("250 Requested mail action okay, completed");
                 else
                 {
                     this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
@@ -425,19 +328,19 @@ namespace MailServer.MTA
                 if (ExistMailbox(recv))
                 {
                     msg.Receivers.Add(recv);
-                    this.SendMessage("250 Requested mail action okay, completed");
+                    this.Send("250 Requested mail action okay, completed");
                 }
                 else
-                    this.SendMessage("550 Requested action not taken: mailbox unavailable");
+                    this.Send("550 Requested action not taken: mailbox unavailable");
             }
             else if (type == SmtpMessageType.DATA)
             {
-                this.SendMessage("354 Start mail input; end with <CRLF>.<CRLF>");
+                this.Send("354 Start mail input; end with <CRLF>.<CRLF>");
             }
             else if (type == SmtpMessageType.UNKOWN)
             {
                 // Syntax error (also a command line may be too long). The server cannot recognize the command
-                this.SendMessage($"500 {Config.Current.Domain} Syntax error (also a command line may be too long). The server cannot recognize the command!");
+                this.Send($"500 {Config.Current.Domain} Syntax error (also a command line may be too long). The server cannot recognize the command!");
             }
             else
             {
@@ -448,45 +351,12 @@ namespace MailServer.MTA
             return type ?? SmtpMessageType.UNKOWN;
         }
 
-        public void Close(String message)
+        protected override void Clear()
         {
-            if (this.IsConnected)
-            {
-                try
-                {
-                    this.SendMessage(message);
-                    this.Client?.Close();
-                }
-                catch(IOException e)
-                {
-
-                }
-            }
-            this.OnDisconnect?.Invoke(this);
-        }
-
-        private void Clear()
-        {
-            this.OnDisconnect = null;
             this.OnMailArrived = null;
-
-            if (this.IsConnected)
-                this.Client?.Close();
-
-            this.IsAuthenticated = false;
             this.ClientName = null;
-            this.SslProtocol = SslProtocols.None;
 
-            this.Stream?.Dispose();
-
-            this.Client?.Dispose();
-            this.Client = null;
+            base.Clear();
         }
-
-        public void Dispose()
-        {
-            this.Clear();
-        }
-        #endregion
     }
 }

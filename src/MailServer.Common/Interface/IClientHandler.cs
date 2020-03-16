@@ -35,6 +35,8 @@ namespace MailServer.Interface {
         public void Start();
         public Task StartAsync();
 
+        public void SendWelcomeMessage();
+
         public void Close(String message);
     }
 }
