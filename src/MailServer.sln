@@ -5,7 +5,13 @@ VisualStudioVersion = 16.0.29728.190
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MailServer", "MailServer\MailServer.csproj", "{DCEC1385-0222-4E82-8618-EC0CC21A8FF1}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MailServer.Test", "MailServer.Test\MailServer.Test.csproj", "{DA887C29-B0B3-438A-938B-C0272A569B8C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MailServer.Test", "MailServer.Test\MailServer.Test.csproj", "{DA887C29-B0B3-438A-938B-C0272A569B8C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MailServer.MDA", "MailServer.MDA\MailServer.MDA.csproj", "{2C7546A5-FFF0-485F-9D09-101096458282}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MailServer.MTA", "MailServer.MTA\MailServer.MTA.csproj", "{918E7604-19A0-4B19-B0FF-80EE4AC86E6D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MailServer.Common", "MailServer.Common\MailServer.Common.csproj", "{6177576D-7109-4E39-99F4-BF4B029D6F0F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -21,6 +27,18 @@ Global
 		{DA887C29-B0B3-438A-938B-C0272A569B8C}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DA887C29-B0B3-438A-938B-C0272A569B8C}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DA887C29-B0B3-438A-938B-C0272A569B8C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C7546A5-FFF0-485F-9D09-101096458282}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C7546A5-FFF0-485F-9D09-101096458282}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C7546A5-FFF0-485F-9D09-101096458282}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C7546A5-FFF0-485F-9D09-101096458282}.Release|Any CPU.Build.0 = Release|Any CPU
+		{918E7604-19A0-4B19-B0FF-80EE4AC86E6D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{918E7604-19A0-4B19-B0FF-80EE4AC86E6D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{918E7604-19A0-4B19-B0FF-80EE4AC86E6D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{918E7604-19A0-4B19-B0FF-80EE4AC86E6D}.Release|Any CPU.Build.0 = Release|Any CPU
+		{6177576D-7109-4E39-99F4-BF4B029D6F0F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{6177576D-7109-4E39-99F4-BF4B029D6F0F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{6177576D-7109-4E39-99F4-BF4B029D6F0F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{6177576D-7109-4E39-99F4-BF4B029D6F0F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

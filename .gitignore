@@ -11,3 +11,9 @@ src/.vscode/
 /src/MailServer.Test/*.user
 /src/MailServer.Test/obj
 /src/MailServer.Test/bin
+/src/MailServer.MDA/bin
+/src/MailServer.MDA/obj
+/src/MailServer.Common/bin
+/src/MailServer.Common/obj
+/src/MailServer.MTA/bin
+/src/MailServer.MTA/obj

@@ -13,6 +13,12 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MailServer.Common\MailServer.Common.csproj" />
+    <ProjectReference Include="..\MailServer.MDA\MailServer.MDA.csproj" />
+    <ProjectReference Include="..\MailServer.MTA\MailServer.MTA.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <None Update="Config.json">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>

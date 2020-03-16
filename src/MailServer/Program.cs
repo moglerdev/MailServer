@@ -17,7 +17,7 @@
 using DnsClient;
 using MailKit.Net.Smtp;
 using MailServer.Common;
-using MailServer.SMTP;
+using MailServer.MTA;
 using MimeKit;
 using System;
 using System.IO;
