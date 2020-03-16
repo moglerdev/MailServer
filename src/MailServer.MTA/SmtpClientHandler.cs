@@ -40,6 +40,7 @@ namespace MailServer.MTA
 {
     public enum SmtpMessageType
     {
+        UNKOWN = 0,
         QUIT = 1,
         HELO = 2,
         EHLO = 3,
@@ -123,7 +124,7 @@ namespace MailServer.MTA
         public Boolean IsConnected { get => this.Client != null && this.Client.Connected; }
         public String ClientName { get; private set; }
         public String ClientDomain { get; private set; }
-        public IPAddress ClientAddress { get => (this._clientSocket.RemoteEndPoint as IPEndPoint).Address; }
+        public IPAddress ClientAddress { get => (this._clientSocket?.RemoteEndPoint as IPEndPoint).Address; }
         public Boolean IsAuthenticated { get; private set; }
         public SslProtocols SslProtocol { get; private set; } = SslProtocols.None;
         #endregion
@@ -268,12 +269,34 @@ namespace MailServer.MTA
 
         private void SendMessage(String message)
         {
-            Console.WriteLine("[Server]:" + message);
+            Log.WriteLine(LogType.Debug, "SmtpClientHanlder", "SendMessage", "<Server>:{0}", message);
             this.Stream.Write(this._encoder.GetBytes(message + "\r\n"));
         }
 
 
         ReceivedMessage msg = null;
+
+        private Int32 Read(Byte[] buffer, Int32 offset, Int32 length)
+        {
+            this._timer.Start();
+            try
+            {
+                return this.Stream.Read(buffer, offset, length);
+            }
+            catch(ObjectDisposedException e)
+            {
+                Log.WriteLine(LogType.Debug, "SmtpClientHandler", "Read", e.ToString());
+            }
+            catch(Exception e)
+            {
+
+            }
+            finally
+            {
+                this._timer.Stop();
+            }
+            return 0;
+        }
 
         private void ReceivingData()
         {
@@ -281,12 +304,10 @@ namespace MailServer.MTA
             Boolean isData = false;
             Byte[] buffer = new byte[bufferSize];
             MemoryStream ms = new MemoryStream();
-            this._timer.Start();
-            while (( readData = this.Stream.Read(buffer, 0, buffer.Length)) > 0)
+            while ((readData = this.Read(buffer, 0, buffer.Length)) > 0)
             {
                 try
                 {
-                    this._timer.Stop();
                     ms.Write(buffer, 0, readData);
                     // TODO Max Buffer Size
                     byte[] msBuffer = ms.GetBuffer();
@@ -307,7 +328,7 @@ namespace MailServer.MTA
 
                                 this.SendMessage("250 Requested mail action okay, completed");
 
-                                Console.WriteLine("<Client>: {MIME MESSAGE}");
+                                Log.WriteLine(LogType.Debug, "SmtpClientHandler", "ReceivingData", "<{0}>: {MIME MESSAGE}", this.ClientAddress.ToString());
 
                                 ms.Dispose();
                                 ms = null;
@@ -346,11 +367,9 @@ namespace MailServer.MTA
                 {
                     this.Close("451 Requested action aborted: local error in processing");
                 }
-                this._timer.Start();
             }
-            this._timer.Stop();
-
             ms?.Dispose();
+            this.OnDisconnect?.Invoke(this);
         }
 
         private SmtpMessageType HandleCommand(String message)
@@ -360,11 +379,11 @@ namespace MailServer.MTA
             try
             {
                 type = GetMessageType(message);
-                Console.WriteLine("<Client>:" + message);
+                Log.WriteLine(LogType.Debug, "SmtpClientHandler", "HandleCommand", "<Client>:{0}", message);
             }
             catch (Exception e)
             {
-                this.SendMessage("500 Syntax error, command unrecognised");
+                type = SmtpMessageType.UNKOWN;
             }
 
             if (type == SmtpMessageType.QUIT)
@@ -414,7 +433,11 @@ namespace MailServer.MTA
             else if (type == SmtpMessageType.DATA)
             {
                 this.SendMessage("354 Start mail input; end with <CRLF>.<CRLF>");
-                return SmtpMessageType.DATA;
+            }
+            else if (type == SmtpMessageType.UNKOWN)
+            {
+                // Syntax error (also a command line may be too long). The server cannot recognize the command
+                this.SendMessage($"500 {Config.Current.Domain} Syntax error (also a command line may be too long). The server cannot recognize the command!");
             }
             else
             {
@@ -422,7 +445,7 @@ namespace MailServer.MTA
                 return SmtpMessageType.QUIT;
             }
 
-            return type ?? SmtpMessageType.QUIT;
+            return type ?? SmtpMessageType.UNKOWN;
         }
 
         public void Close(String message)

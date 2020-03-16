@@ -74,7 +74,7 @@ namespace MailServer.MTA {
 
                     client.OnDisconnect += ClientDisconnected;
 #pragma warning disable CS4014 // Da auf diesen Aufruf nicht gewartet wird, wird die Ausführung der aktuellen Methode vor Abschluss des Aufrufs fortgesetzt.
-                    client.StartAsync().ContinueWith(t => Console.WriteLine(t), TaskContinuationOptions.OnlyOnFaulted);
+                    client.StartAsync().ContinueWith(t => Log.WriteLine(LogType.Error, "MailTransferAgent", "StartAsync", "{0}", t.Exception?.ToString()), TaskContinuationOptions.OnlyOnFaulted);
 #pragma warning restore CS4014 // Da auf diesen Aufruf nicht gewartet wird, wird die Ausführung der aktuellen Methode vor Abschluss des Aufrufs fortgesetzt.
                     this._connectedClientList.Add(client);
                 }
@@ -99,7 +99,7 @@ namespace MailServer.MTA {
 
         protected void ClientDisconnected(SmtpClientHandler smtp)
         {
-            Console.WriteLine("Client disconnected!");
+            Log.WriteLine(LogType.Debug, "MailTransferAgent", "ClientDisconnected", "<Client>: {Client disconnected!}");
             smtp.Dispose();
             this._connectedClientList.Remove(smtp);
         }
