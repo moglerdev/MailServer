@@ -14,6 +14,7 @@
 //
 // You should have received a copy of the GNU General Public License along with this program. If not, see<https://www.gnu.org/licenses/>.
 
+using MailServer.Common.Base;
 using MailServer.Interface;
 using System;
 using System.Collections.Generic;
@@ -25,42 +26,11 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace MailServer.MDA {
-    public class PopClientHandler : IClientHandler, IDisposable {
-        public TcpClient Client { get; private set; }
-        public Stream Stream { get; private set; }
-        public Boolean IsConnected { get => this.Client != null && this.Client.Connected; }
-        public IPAddress ClientAddress { get => ( this._clientSocket.RemoteEndPoint as IPEndPoint ).Address; }
-        public Boolean IsAuthenticated { get; private set; }
-        public SslProtocols SslProtocol { get; private set; } = SslProtocols.None;
-        
-        private readonly Socket _clientSocket;
+    public class PopClientHandler : ClientHandlerBase, IDisposable {
 
-        public PopClientHandler(TcpClient client, SslProtocols protocol = SslProtocols.None)
+        public PopClientHandler(TcpClient client, SslProtocols sslProtocols = SslProtocols.None)
+            : base(client, sslProtocols)
         {
-            this.Client = client;
-            this._clientSocket = this.Client.Client;
-
-            this.SslProtocol = protocol;
-        }
-
-        public void Start()
-        {
-
-        }
-
-        public async Task StartAsync()
-        {
-            await Task.Run(this.Start);
-        }
-
-        public void Close(String message)
-        {
-
-        }
-
-        public void Dispose()
-        {
-
         }
     }
 }

@@ -19,15 +19,9 @@ using MimeKit;
 using System;
 using System.IO;
 using System.Linq;
-using System.Net;
-using System.Net.Security;
 using System.Net.Sockets;
-using System.Text;
-using System.Timers;
 using System.Security.Authentication;
 using System.Collections.Generic;
-using System.Threading.Tasks;
-using MailServer.Interface;
 using MailServer.Common.Base;
 
 // TODO:
@@ -110,7 +104,6 @@ namespace MailServer.MTA
         }
         public static Boolean ExistMailbox(MailboxAddress address) => Config.Current.Accounts.Any(x => x == address.Address);
 
-
         public event MailArrived OnMailArrived;
 
         public String ClientName { get; private set; }
@@ -132,7 +125,7 @@ namespace MailServer.MTA
 
         public override void SendWelcomeMessage()
         {
-            this.Send($"220 {Config.Current.Domain} ESMTP MAIL Service ready at {DateTimeOffset.Now.ToString()}");
+            this.Send(SmtpCommand.ServiceReady.ToString());
         }
 
         protected virtual void MailArrived(ReceivedMessage mail)
@@ -186,19 +179,16 @@ namespace MailServer.MTA
             return false;
         }
 
-        protected virtual void SendExentsions()
+        protected virtual List<SmtpCommand> GetExtensions()
         {
-            List<String> exentsions = new List<string>();
+            List<SmtpCommand> exentsions = new List<SmtpCommand>();
             // 50 AUTH CRAM-MD5 LOGIN PLAIN
             // Send Exentsions
-            exentsions.Add("STARTTLS");
+            exentsions.Add(SmtpCommand.ExtensionStartTls);
             if (this.IsDeliverService)
-                exentsions.Add("AUTH LOGIN PLAIN");
+                exentsions.Add(SmtpCommand.ExtensionAuthLogin);
 
-            for (int i = 0; i < exentsions.Count; ++i)
-            {
-                this.Send($"250{( exentsions.Count - 1 < i ? "-" : " " )}" + exentsions[i]);
-            }
+            return exentsions;
         }
 
         ReceivedMessage msg = null;
@@ -221,14 +211,14 @@ namespace MailServer.MTA
                             break;
                         if (isData && i + 4 < msBuffer.Length)
                         {
-                            if (this.IsEndOfData(buffer, i))
+                            if (this.IsEndOfData(msBuffer, i))
                             {
                                 using (MemoryStream mimeMs = new MemoryStream(ms.ToArray()))
                                     msg.MimeMessage = MimeMessage.Load(mimeMs); // TODO: <CLRF>.<CLRF> wird in die Mime mit geschrieben
 
                                 this.OnMailArrived?.Invoke(msg);
 
-                                this.Send("250 Requested mail action okay, completed");
+                                this.Send(SmtpCommand.Ok.ToString());
 
                                 Log.WriteLine(LogType.Debug, "SmtpClientHandler", "ReceivingData", "<{0}>: {MIME MESSAGE}", this.ClientAddress.ToString());
 
@@ -240,7 +230,7 @@ namespace MailServer.MTA
                         }
                         else if (i + 2 < msBuffer.Length)
                         {
-                            if (this.IsEndOfLine(buffer, i))
+                            if (this.IsEndOfLine(msBuffer, i))
                             {
                                 String message = this.Encoding.GetString(ms.ToArray());
 
@@ -267,7 +257,7 @@ namespace MailServer.MTA
                 }
                 catch (Exception e)
                 {
-                    this.Close("451 Requested action aborted: local error in processing");
+                    this.Close(SmtpCommand.LocalError.ToString());
                 }
             }
             ms?.Dispose();
@@ -291,22 +281,23 @@ namespace MailServer.MTA
 
             if (type == SmtpMessageType.QUIT)
             {
-                this.Close($"221 {Config.Current.Domain} Service closing transmission channel");
+                this.Close(SmtpCommand.Close.ToString());
                 return SmtpMessageType.QUIT;
             }
             else if (type == SmtpMessageType.HELO || type == SmtpMessageType.EHLO)
             {
                 this.ClientName = message.Substring(4, message.Length - 4).Trim();
-                this.Send($"250-{Config.Current.Domain} Hello [{this.ClientAddress.ToString()}]");
 
                 if (type == SmtpMessageType.EHLO)
-                    this.SendExentsions();
+                    this.Send(SmtpCommand.WelcomeMessage.ToString(this.GetExtensions()));
+                else
+                    this.Send(SmtpCommand.WelcomeMessage.ToString());
             }
             else if (type == SmtpMessageType.STARTTLS)
             {
                 if (this.VerifyCommand(SmtpMessageType.STARTTLS))
                 {
-                    this.Send("220 SMTP server ready");
+                    this.SendWelcomeMessage();
                     this.InitEncryptedStream();
                 }
 
@@ -315,10 +306,10 @@ namespace MailServer.MTA
             {
                 msg = new ReceivedMessage(GetAddress(message));
                 if (VerifyCommand(SmtpMessageType.MAIL))
-                    this.Send("250 Requested mail action okay, completed");
+                    this.Send(SmtpCommand.Ok.ToString());
                 else
                 {
-                    this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
+                    this.Close(SmtpCommand.ServiceError.ToString());
                     return SmtpMessageType.QUIT;
                 }
             }
@@ -328,23 +319,23 @@ namespace MailServer.MTA
                 if (ExistMailbox(recv))
                 {
                     msg.Receivers.Add(recv);
-                    this.Send("250 Requested mail action okay, completed");
+                    this.Send(SmtpCommand.Ok.ToString());
                 }
                 else
-                    this.Send("550 Requested action not taken: mailbox unavailable");
+                    this.Send(SmtpCommand.MailboxNotAvailable.ToString());
             }
             else if (type == SmtpMessageType.DATA)
             {
-                this.Send("354 Start mail input; end with <CRLF>.<CRLF>");
+                this.Send(SmtpCommand.DataReady.ToString());
             }
             else if (type == SmtpMessageType.UNKOWN)
             {
                 // Syntax error (also a command line may be too long). The server cannot recognize the command
-                this.Send($"500 {Config.Current.Domain} Syntax error (also a command line may be too long). The server cannot recognize the command!");
+                this.Send(SmtpCommand.SyntaxError.ToString());
             }
             else
             {
-                this.Close($"421 {Config.Current.Domain} Service not available, closing transmission channel!");
+                this.Close(SmtpCommand.Close.ToString());
                 return SmtpMessageType.QUIT;
             }
 

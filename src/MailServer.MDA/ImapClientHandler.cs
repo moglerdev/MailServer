@@ -14,6 +14,7 @@
 //
 // You should have received a copy of the GNU General Public License along with this program. If not, see<https://www.gnu.org/licenses/>.
 
+using MailServer.Common.Base;
 using MailServer.Interface;
 using System;
 using System.IO;
@@ -25,41 +26,24 @@ using System.Threading.Tasks;
 using System.Timers;
 
 namespace MailServer.MDA {
-    public class ImapClientHandler : IClientHandler, IDisposable {
-        const int bufferSize = 4069;
+    public class ImapClientHandler : ClientHandlerBase, IDisposable {
 
-        public TcpClient Client { get; private set; }
-        public Stream Stream { get; private set; }
-        public Boolean IsConnected { get; private set; }
-        public IPAddress ClientAddress { get; private set; }
-        public Boolean IsAuthenticated { get; private set; }
-        public SslProtocols SslProtocol { get; private set; }
-
-        private readonly Socket _clientSocket;
-        private readonly Timer _timer = new Timer(30000);
-
-        private Encoding _encoder = Encoding.UTF8;
-
-        public void Start()
+        public ImapClientHandler(TcpClient client, SslProtocols sslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13)
+            : base(client, sslProtocols)
         {
+
         }
 
-        public async Task StartAsync()
-        {
-            await Task.Run(this.Start);
-        }
-
-        private void ReceivingData()
+        protected override void ListenForData()
         {
             Int32 readData, testedLength = 0;
-            Byte[] buffer = new byte[bufferSize];
+            Boolean isData = false;
+            Byte[] buffer = new byte[BufferSize];
             MemoryStream ms = new MemoryStream();
-            this._timer.Start();
-            while (( readData = this.Stream.Read(buffer, 0, buffer.Length) ) > 0)
+            while (( readData = this.Read(buffer, 0, buffer.Length) ) > 0)
             {
                 try
                 {
-                    this._timer.Stop();
                     ms.Write(buffer, 0, readData);
                     // TODO Max Buffer Size
                     byte[] msBuffer = ms.GetBuffer();
@@ -70,9 +54,9 @@ namespace MailServer.MDA {
 
                         if (i + 2 < msBuffer.Length)
                         {
-                            if (msBuffer[i] == (byte)'\r' && msBuffer[i + 1] == (byte)'\n')
+                            if (this.IsEndOfLine(buffer, i))
                             {
-                                String message = this._encoder.GetString(ms.ToArray());
+                                String message = this.Encoding.GetString(ms.ToArray());
 
                                 ms.Dispose();
                                 ms = null;
@@ -92,19 +76,9 @@ namespace MailServer.MDA {
                 {
                     this.Close("451 Requested action aborted: local error in processing");
                 }
-                this._timer.Start();
             }
-            this._timer.Stop();
-
             ms?.Dispose();
-        }
-
-        public void Close(String message)
-        {
-        }
-
-        public void Dispose()
-        {
+            this.Disconnected();
         }
     }
 }

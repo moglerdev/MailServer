@@ -86,27 +86,26 @@ namespace MailServer.Common.Base {
             return 0;
         }
 
-        protected virtual void ListenForData()
-        {
-            throw new NotImplementedException();
-        }
+        protected abstract void ListenForData();
 
         protected virtual Boolean IsEndOfLine(byte[] buffer, Int32 pos)
         {
-            return buffer[pos] == (byte)'\r' && buffer[pos + 1] == (byte)'\n';
+            if (pos < 1)
+                return false;
+            return buffer[pos - 1] == (byte)'\r' && buffer[pos] == (byte)'\n';
         }
 
         protected virtual Boolean IsEndOfData(byte[] buffer, Int32 pos)
         {
-            return buffer[pos] == (byte)'\r' && buffer[pos + 1] == (byte)'\n' &&
-                                buffer[pos + 2] == (byte)'.' &&
-                                buffer[pos + 3] == (byte)'\r' && buffer[pos + 4] == (byte)'\n';
+            if (pos < 4)
+                return false;
+
+            return buffer[pos - 4] == (byte)'\r' && buffer[pos - 3] == (byte)'\n' &&
+                                buffer[pos - 2] == (byte)'.' &&
+                                buffer[pos - 1] == (byte)'\r' && buffer[pos] == (byte)'\n';
         }
 
-        public virtual void SendWelcomeMessage()
-        {
-            throw new NotImplementedException();
-        }
+        public abstract void SendWelcomeMessage();
 
         protected virtual void InitEncryptedStream(SslProtocols protocols = SslProtocols.Tls12 | SslProtocols.Tls13)
         {
@@ -119,11 +118,6 @@ namespace MailServer.Common.Base {
         protected virtual void TimeoutConnection(object sender, EventArgs eventArgs)
         {
             this._timer.Stop();
-
-            if (this.IsConnected)
-                this.Close($"451 Timeout waiting for client input [{Config.Current.Domain}]");
-            else
-                this.OnDisconnect?.Invoke(this);
         }
 
         protected void Disconnected()
