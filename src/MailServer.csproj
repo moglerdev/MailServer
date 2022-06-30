@@ -9,7 +9,7 @@
     <PackageReference Include="DnsClient" Version="1.2.0" />
     <PackageReference Include="MailKit" Version="2.5.1" />
     <PackageReference Include="MimeKit" Version="2.5.1" />
-    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
   </ItemGroup>
 
   <ItemGroup>
