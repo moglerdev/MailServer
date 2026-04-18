@@ -7,8 +7,8 @@
 
   <ItemGroup>
     <PackageReference Include="DnsClient" Version="1.2.0" />
-    <PackageReference Include="MailKit" Version="2.5.1" />
-    <PackageReference Include="MimeKit" Version="2.5.1" />
+    <PackageReference Include="MailKit" Version="4.16.0" />
+    <PackageReference Include="MimeKit" Version="4.16.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.1" />
   </ItemGroup>
 
